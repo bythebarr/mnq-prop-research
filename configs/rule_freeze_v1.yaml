@@ -660,10 +660,150 @@ market_structure:
 
 # --- Acceptance, rejection and breakout definitions ---------------------------------------------------------
 acceptance_rejection_breakout:
-  measurement_basis: TBD
-  acceptance_definition: TBD
-  rejection_definition: TBD
-  breakout_definition: TBD
+  # Round 9 answers (rule owner, 2026-09-28). Implemented in
+  # src/mnq_research/level_states.py; plain-English guide in docs/LEVEL_STATES.md.
+  # L = zone lower boundary, U = zone upper boundary, tick = 0.25 points.
+  # Distances use level_states.parameters (never duplicate code constants).
+  measurement_basis:
+    unit: >
+      Structural clusters/zones, not separate constituent levels. Constituent
+      identities are preserved, but each cluster has one chronological
+      interaction history.
+    bars: completed, eligible five-minute decision bars only
+    wicks: highs and lows detect approach, touch and raw breach
+    closes: closes determine acceptance and rejection
+    boundary: the lower or upper zone boundary appropriate to the direction
+    current_price_relation: "BELOW_ZONE: close < L; INSIDE_ZONE: L <= close <= U; ABOVE_ZONE: close > U (descriptive only)"
+    approached: >
+      From below: bar high >= L - approach_distance AND bar high < L. From
+      above: bar low <= U + approach_distance AND bar low > U. A bar that
+      reaches or enters the zone is TOUCHED, not merely approached. Record
+      APPROACHED_FROM_BELOW / APPROACHED_FROM_ABOVE. Approaching from both
+      sides without touching is a validation failure.
+    touched: >
+      bar high >= L AND bar low <= U (equality counts). Record
+      TOUCH_FROM_BELOW, TOUCH_FROM_ABOVE or TOUCH_ORIGIN_UNKNOWN. A touch alone
+      is not acceptance, rejection, breakout or an entry signal.
+    interaction_origin: >
+      From the most recent completed close before the interaction that was
+      clearly outside the zone: BELOW if close <= L - rejection close
+      distance; ABOVE if close >= U + rejection close distance; otherwise
+      UNKNOWN. Never guessed from candle colour or intrabar ordering.
+    breached: >
+      BREACHED_ABOVE: bar high >= U + breach distance. BREACHED_BELOW: bar low
+      <= L - breach distance. A wick breach is not acceptance and not a
+      breakout.
+    two_sided_breach: >
+      One bar satisfying both breaches records TWO_SIDED_BREACH, flagged for
+      diagnostics and finer-data replay. Wick order is never inferred. Its
+      close may still count toward acceptance if it meets the close rule.
+  acceptance_definition:
+    accepted_above: >
+      K consecutive complete five-minute bars close at or above U + acceptance
+      distance (B0: close >= U + 0.50, K = 2).
+    accepted_below: >
+      K consecutive complete five-minute bars close at or below L - acceptance
+      distance (B0: close <= L - 0.50, K = 2).
+    qualifying_bars: >
+      Each bar must be complete, eligible under the decision-clock data rules,
+      after the zone's initialisation, not overlapping a news blackout, and
+      consecutive in the valid decision-bar sequence with no incomplete or
+      disallowed bar between.
+    timestamp: closing timestamp of the K-th qualifying bar
+    counter_reset: >
+      A completed bar closing short of the threshold, an incomplete bar, the
+      start of a news blackout, or a reset by another frozen safety rule.
+    gaps: >
+      Acceptance needs no prior touch or breach. If price gaps completely over
+      a zone and then produces the qualifying closes, acceptance may occur.
+      Record GAPPED_ABOVE_ZONE / GAPPED_BELOW_ZONE; never fabricate a touch at
+      a price that never traded.
+  rejection_definition:
+    upward_attempt: >
+      A zone with origin BELOW is touched or breached above. It is
+      REJECTED_UPWARD_ATTEMPT when, before ACCEPTED_ABOVE, a complete bar
+      closes at or below L - rejection close distance (B0: close <= L - 0.50).
+    downward_attempt: >
+      A zone with origin ABOVE is touched or breached below. It is
+      REJECTED_DOWNWARD_ATTEMPT when, before ACCEPTED_BELOW, a complete bar
+      closes at or above U + rejection close distance (B0: close >= U + 0.50).
+    window: >
+      The qualifying close must be on the interaction bar or within the next
+      two complete bars (at most three complete bars, including the
+      interaction bar). A same-bar rejection is valid because the close
+      decides it; two-sided bars remain flagged.
+    unknown_origin: >
+      Approach, touch, breach and acceptance may still be recorded, but never
+      a rejection.
+    window_failure: >
+      A pending window ends WITHOUT rejection after three complete bars, on the
+      corresponding acceptance, on an incomplete bar, at a news-blackout start,
+      or when the trading window closes. Record REJECTION_WINDOW_EXPIRED or
+      REJECTION_WINDOW_INVALIDATED. Expiry is not acceptance.
+  breakout_definition: NOT_APPLICABLE_AS_SEPARATE_EVENT
+  terminology: >
+    BREACH: a wick at least one tick beyond the far zone boundary.
+    ACCEPTANCE: two qualifying five-minute closes at least two ticks beyond
+    the far boundary. BREAKOUT: plain-language name for acceptance only.
+    There is no separate breakout trigger from a single wick, a single close
+    or an intrabar price crossing.
+
+# --- Level states (added Round 9) ------------------------------------------------------------------------
+level_states:
+  parameters:   # candidate B0 values, NOT established market truths; not optimised
+    approach_distance_method: level_proximity_tolerance_points   # the current day's tolerance
+    breach_distance_ticks: 1
+    acceptance_distance_ticks: 2
+    acceptance_consecutive_closes: 2
+    rejection_close_distance_ticks: 2
+    rejection_window_complete_bars: 3
+    in_points_b0: "breach 0.25; acceptance close distance 0.50; rejection close distance 0.50"
+  state_storage:
+    principle: >
+      No single destructive enum. Historical events are never erased when
+      current_state changes.
+    per_zone: [zone_id, current_state, current_price_relation, interaction_origin, first_interaction_timestamp, most_recent_transition_timestamp, consecutive_acceptance_closes_above, consecutive_acceptance_closes_below, active_rejection_window, complete chronological event history]
+  incomplete_bar_handling:
+    - Generates no state transition.
+    - Resets consecutive-close counters.
+    - Invalidates any incomplete pending rejection sequence.
+    - Is recorded in the zone history as a data interruption.
+    - Cannot be skipped over to claim consecutive confirmation.
+  initialization:
+    at_availability: "current_state UNTOUCHED; interaction_origin UNKNOWN; acceptance counters 0; no active rejection window"
+    prior_and_overnight_only_zones: >
+      Exist before 09:30. Replay the three complete five-minute bars
+      09:30-09:35, 09:35-09:40 and 09:40-09:45 to establish approach, touch,
+      breach, rejection or acceptance state. This replay is state
+      initialisation only and can never generate an entry before 09:45.
+    opening_range_zones: >
+      Any cluster containing OPENING_RANGE_HIGH or OPENING_RANGE_LOW is
+      initialised at 09:45 as UNTOUCHED with zero counters. Its own
+      09:30-09:45 component bars are never used to classify it (they built
+      its boundaries).
+    merged_at_0945: >
+      If an opening-range level clusters with a pre-existing zone at 09:45,
+      create a new 09:45 cluster version: preserve the earlier pre-opening
+      cluster and its history for audit, transfer none of its executable
+      state, initialise the new cluster UNTOUCHED, and record parent
+      constituent and predecessor-cluster identifiers.
+  after_acceptance: >
+    Acceptance is an immutable historical event with its timestamp, not a
+    permanent permission to enter. How long it stays entry-eligible, any
+    pullback requirement, continuation confirmation, the entry trigger, the
+    stop and the target are defined in later rounds. A later opposite
+    acceptance is recorded as a new event; the earlier one is never erased.
+  event_priority:
+    rule: Record every satisfied event flag; current_state is chosen by this precedence.
+    order:
+      - ACCEPTED_ABOVE or ACCEPTED_BELOW
+      - REJECTED_UPWARD_ATTEMPT or REJECTED_DOWNWARD_ATTEMPT
+      - TWO_SIDED_BREACH
+      - BREACHED_ABOVE or BREACHED_BELOW
+      - TOUCHED
+      - APPROACHED
+      - UNTOUCHED
+    note: One bar cannot establish both ACCEPTED_ABOVE and ACCEPTED_BELOW (its close cannot meet both thresholds).
 
 # --- Confirmation (added Round 2) ------------------------------------------------------------------------
 confirmation:

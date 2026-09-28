@@ -412,6 +412,47 @@ the day, or can a fresh acceptance start again?
 **Illustrative only:** "The setup is void. That level may not be used again
 today."
 
+### `level_states.parameters`
+*(Added in Round 9.)*
+**Question:** Which distances and counts define approach, breach, acceptance
+and rejection? Give them in ticks and numbers of bars.
+**Illustrative only:** `breach_distance_ticks: 1`,
+`acceptance_consecutive_closes: 2`.
+
+### `level_states.state_storage`
+*(Added in Round 9.)*
+**Question:** What is stored for every zone, and is its history ever
+overwritten?
+**Illustrative only:** "The current state plus an append-only event
+history."
+
+### `level_states.incomplete_bar_handling`
+*(Added in Round 9.)*
+**Question:** What does an incomplete decision bar do to counters and
+pending sequences?
+**Illustrative only:** "Resets counters and cancels pending sequences."
+
+### `level_states.initialization`
+*(Added in Round 9.)*
+**Question:** In what state does each zone start, and do bars before the
+entry window count? How are opening-range zones handled?
+**Illustrative only:** "Start UNTOUCHED. Opening-range zones start at
+09:45."
+
+### `level_states.after_acceptance`
+*(Added in Round 9.)*
+**Question:** What does acceptance permit, and for how long? (The details
+belong to later rounds.)
+**Illustrative only:** "A historical event only. Entry eligibility is
+defined in the confirmation round."
+
+### `level_states.event_priority`
+*(Added in Round 9.)*
+**Question:** When one bar satisfies several events, which one sets the
+zone's current state?
+**Illustrative only:** "Acceptance, then rejection, then breach, then
+touch."
+
 ### `ema.included`
 **Question:** Is an exponential moving average used in any rule? Answer
 `true` or `false`. If `false`, the other EMA fields are not required.

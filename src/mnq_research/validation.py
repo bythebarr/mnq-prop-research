@@ -29,6 +29,7 @@ from typing import Any
 from mnq_research.config import load_mapping
 from mnq_research.data_contracts import EXCHANGE_TIMEZONE, REQUIRED_COLUMNS
 from mnq_research.hashing import hash_object
+from mnq_research.level_states import APPROACH_METHOD
 from mnq_research.structural_levels import B0_LEVEL_TYPES
 
 STATUS_DRAFT = "DRAFT_NON_EXECUTABLE"
@@ -113,6 +114,13 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "structural_levels.price_validation",
     "structural_levels.clustering_method",
     "structural_levels.decision_use",
+    # Level states (Round 9)
+    "level_states.parameters",
+    "level_states.state_storage",
+    "level_states.incomplete_bar_handling",
+    "level_states.initialization",
+    "level_states.after_acceptance",
+    "level_states.event_priority",
     # Market structure
     "market_structure.structure_bar_interval",
     "market_structure.swing_point_definition",
@@ -450,6 +458,8 @@ def check_rule_freeze(spec: Any, spec_path: str | Path | None = None) -> RuleFre
     # 2c. Structural levels: exactly the implemented B0 set, sane proximity parameters
     for problem in _structural_level_problems(spec):
         add(problem)
+    for problem in _level_state_problems(spec):
+        add(problem)
 
     # 3. Any other unanswered value anywhere (e.g. nested TBDs, extra fields)
     for path, value in _iter_leaves(spec, ""):
@@ -541,6 +551,33 @@ def _structural_level_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
                     "structural_levels.level_proximity_tolerance.parameters", "INVALID", "parameters must be numbers"
                 )
             )
+    return problems
+
+
+LEVEL_STATE_INT_PARAMETERS = (
+    "breach_distance_ticks",
+    "acceptance_distance_ticks",
+    "acceptance_consecutive_closes",
+    "rejection_close_distance_ticks",
+    "rejection_window_complete_bars",
+)
+
+
+def _level_state_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
+    params = get_path(spec, "level_states.parameters")
+    if not isinstance(params, dict):
+        return []
+    base = "level_states.parameters"
+    problems = []
+    method = params.get("approach_distance_method")
+    if not is_unresolved(method) and method != APPROACH_METHOD:
+        problems.append(RuleFreezeProblem(f"{base}.approach_distance_method", "INVALID", f"must be {APPROACH_METHOD!r}"))
+    for name in LEVEL_STATE_INT_PARAMETERS:
+        value = params.get(name, _MISSING)
+        if value is _MISSING:
+            problems.append(RuleFreezeProblem(f"{base}.{name}", "MISSING", "required parameter is missing"))
+        elif not is_unresolved(value) and (isinstance(value, bool) or not isinstance(value, int) or value < 1):
+            problems.append(RuleFreezeProblem(f"{base}.{name}", "INVALID", f"must be a whole number >= 1, got {value!r}"))
     return problems
 
 

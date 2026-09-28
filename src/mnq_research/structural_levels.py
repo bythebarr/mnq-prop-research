@@ -39,6 +39,10 @@ from mnq_research.data_contracts import MinuteStatus
 NEW_YORK = ZoneInfo("America/New_York")
 TICK = Decimal("0.25")
 ONE_MINUTE = pd.Timedelta(minutes=1)
+RTH_OPEN_NY = dt.time(9, 30)
+RTH_CLOSE_NY = dt.time(16, 0)
+OPENING_RANGE_END_NY = dt.time(9, 45)
+NEW_ENTRY_START_NY = dt.time(9, 45)
 NEW_ENTRY_CUTOFF_NY = dt.time(11, 30)
 EMERGENCY_FLATTEN_NY = dt.time(15, 55)
 # PRIOR_RTH_CLOSE: a closing observation may be at most five minutes old, so only
@@ -106,11 +110,11 @@ class Window:
 
 
 def rth_window(date: dt.date) -> Window:
-    return Window("PRIOR_RTH", ny_time(date, dt.time(9, 30)), ny_time(date, dt.time(16, 0)))
+    return Window("PRIOR_RTH", ny_time(date, RTH_OPEN_NY), ny_time(date, RTH_CLOSE_NY))
 
 
 def opening_range_window(date: dt.date) -> Window:
-    return Window("OPENING_RANGE", ny_time(date, dt.time(9, 30)), ny_time(date, dt.time(9, 45)))
+    return Window("OPENING_RANGE", ny_time(date, RTH_OPEN_NY), ny_time(date, OPENING_RANGE_END_NY))
 
 
 def prior_normal_rth_date(calendar: SessionCalendar, trade_date: dt.date) -> dt.date | None:
@@ -138,7 +142,7 @@ def overnight_window(calendar: SessionCalendar, trade_date: dt.date) -> tuple[Wi
         return None, "CURRENT_DATE_NOT_A_NORMAL_SESSION"
     if not info.open_verified or info.globex_open_utc is None:
         return None, "SESSION_OPEN_UNVERIFIED"
-    return Window("OVERNIGHT", info.globex_open_utc, ny_time(trade_date, dt.time(9, 30))), None
+    return Window("OVERNIGHT", info.globex_open_utc, ny_time(trade_date, RTH_OPEN_NY)), None
 
 
 # ---------------------------------------------------------------------------
@@ -341,8 +345,13 @@ class LevelCluster:
         return tuple(c.source_window for c in self.constituents)
 
 
-def cluster_levels(levels: Iterable[StructuralLevel], tolerance: Decimal, created_at_utc: pd.Timestamp) -> tuple[LevelCluster, ...]:
-    """Transitive single-linkage clustering: adjacent gap <= tolerance joins a cluster."""
+def cluster_levels(
+    levels: Iterable[StructuralLevel], tolerance: Decimal, created_at_utc: pd.Timestamp, label: str = ""
+) -> tuple[LevelCluster, ...]:
+    """Transitive single-linkage clustering: adjacent gap <= tolerance joins a cluster.
+
+    ``label`` distinguishes cluster versions built at different times (e.g. PRE0930-, 0945-).
+    """
     available = sorted((lv for lv in levels if lv.available), key=lambda lv: (lv.price, lv.level_type.value))
     contracts = {lv.source_contract for lv in available}
     if len(contracts) > 1:
@@ -359,7 +368,7 @@ def cluster_levels(levels: Iterable[StructuralLevel], tolerance: Decimal, create
         first = group[0]
         clusters.append(
             LevelCluster(
-                cluster_id=f"{first.trade_date.isoformat()}:{first.source_contract}:C{number}",
+                cluster_id=f"{first.trade_date.isoformat()}:{first.source_contract}:{label}C{number}",
                 lower_boundary=min(prices),
                 upper_boundary=max(prices),
                 representative_price=float(statistics.median(prices)),
@@ -447,6 +456,8 @@ def levels_for_new_entry(daily: DailyLevelSet, decision_time_utc: pd.Timestamp) 
     local = decision_time_utc.tz_convert(NEW_YORK)
     if local.date() != daily.trade_date:
         raise NewEntryNotPermitted(f"decision {local} is not on trade date {daily.trade_date}")
+    if local.time() < NEW_ENTRY_START_NY:
+        raise NewEntryNotPermitted(f"decision {local.time()} is before the 09:45 new-entry window start")
     if local.time() >= NEW_ENTRY_CUTOFF_NY:
         raise NewEntryNotPermitted(f"decision {local.time()} is at/after the 11:30 new-entry cutoff")
     return daily.available_levels(decision_time_utc)

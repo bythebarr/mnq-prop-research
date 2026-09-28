@@ -65,6 +65,12 @@ the future ingestion code.
   (options include an exchange holiday calendar, Databento status data, or
   spot-checks against trade-level data). It will be decided before real
   data is used.
+* **Unresolved dependency (confirmed in Round 9):** the structural-level
+  code (D-023) treats every unlabelled absent minute as
+  `UNEXPLAINED_MISSING_MINUTE`, which fails closed. Until ingestion can
+  assign `VERIFIED_NO_TRADE_MINUTE` or `KNOWN_DATA_OUTAGE` reliably,
+  real-data levels will often be unavailable. That is safe, but it will
+  reduce the number of tradable days.
 
 ## 5. Contracts and rolls
 

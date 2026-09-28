@@ -292,5 +292,46 @@ by a stronger test that blanks every required field and requires all of
 them to be reported.
 **Reversible:** yes; the level rules themselves only through the registered
 rule-change process.
-**Status:** Rules CONFIRMED by the owner (Round 8); engineering choices 1–6
-PENDING owner confirmation.
+**Status:** CONFIRMED by the project owner on 2026-09-28. Rules confirmed
+in Round 8; engineering choices 1–6 confirmed in Round 9, with these
+clarifications:
+1. An absent weekday is judged against the *applicable calendar version*.
+3. Every intervening minute must be explicitly classified
+   `VERIFIED_NO_TRADE_MINUTE`.
+5. The median representative can never be used for orders, stops, targets,
+   sizing or room-to-target.
+
+Still unresolved: how real-data ingestion will assign missing-minute
+statuses is an open data-acquisition dependency (see
+`DATA_ACQUISITION_PLAN.md` §4).
+
+## D-024 — Zone state tracking implemented; three definitions need a decision (Round 9)
+**Decision:** The owner's Round 9 rules are implemented as written in
+`src/mnq_research/level_states.py`: append-only history, parameters read
+only from the spec, and completed eligible five-minute bars only. The
+plain-English guide is `docs/LEVEL_STATES.md`. Six required
+`level_states.*` fields were added, and the validator checks the parameters
+(whole numbers ≥ 1, and the approach method). `levels_for_new_entry` now
+also refuses decisions before 09:45.
+
+Implementation choices within the rules (please confirm):
+- **Blackout reset:** at a blackout start, the zone's current state, origin
+  and first-interaction time reset to a fresh state. The history is kept.
+  This follows the Round 7b fresh-setup rule.
+- **Gap:** "gapped above" is recorded when the previous eligible close was
+  below L and the current bar's low is above U (mirrored for below).
+- **Two-sided breach:** records `BREACHED_ABOVE`, `BREACHED_BELOW` and
+  `TWO_SIDED_BREACH`.
+- **Missing bar in the sequence:** treated exactly like an incomplete bar.
+
+Open questions found while testing (the literal rules are implemented):
+1. **Breach without crossing:** `low ≤ L − 1 tick` is also true for every
+   bar lying wholly below a zone, so APPROACHED can never become the current
+   state.
+2. **Acceptance without crossing:** two closes beyond a boundary accept even
+   if price never came from the other side.
+3. **New attempt:** after a rejection window expires with price still in
+   the zone, a later touch opens a new attempt.
+**Reversible:** yes.
+**Status:** Rules CONFIRMED (Round 9). Implementation choices and
+questions 1–3 PENDING owner decision.
