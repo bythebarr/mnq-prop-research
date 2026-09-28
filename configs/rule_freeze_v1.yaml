@@ -327,12 +327,106 @@ eligible_trading_dates:
 
 # --- News-event policy ----------------------------------------------------------------------
 news_events:
-  policy: TBD
-  event_types: TBD
-  blackout_minutes_before: TBD
-  blackout_minutes_after: TBD
-  open_position_during_event: TBD
-  calendar_source: TBD
+  # Round 7 answers (rule owner, 2026-09-28)
+  policy:
+    summary: >
+      Scheduled-news blackout policy, stricter than Tradeify's currently
+      published requirements. Scheduled events do NOT make the whole trading
+      date ineligible; they create blackout intervals.
+    during_blackout:
+      - No new entry decision may generate an order.
+      - No new entry order may be submitted.
+      - All unfilled entry orders are cancelled.
+      - Any open strategy position must be closed before the blackout begins.
+      - Risk-management and emergency-flatten logic remain active.
+    pre_window_events: >
+      An event before the 09:45 strategy window is still recorded and tagged,
+      even if its blackout has ended by 09:45.
+    unscheduled_news: >
+      Cannot be pre-scheduled. Handled through stops, slippage modelling,
+      volatility diagnostics and account-level circuit breakers, never by
+      fabricated historical blackouts.
+    day_tags: [MINUTES_SINCE_LAST_TIER_1_EVENT, TIER_1_EVENT_OCCURRED_BEFORE_CASH_OPEN, TIER_1_EVENT_OCCURRED_TODAY]
+    unverified_calendar_dates: >
+      A date whose news schedule cannot be verified from an archived source is
+      marked NEWS_CALENDAR_UNVERIFIED and is ineligible for baseline trading
+      until resolved.
+  event_types:
+    tier_1_events:   # ONLY these create automatic B0 blackouts (U.S. scheduled releases)
+      - BLS Employment Situation, including Nonfarm Payrolls
+      - Consumer Price Index
+      - Producer Price Index
+      - FOMC monetary-policy statement and rate decision
+      - FOMC Chair press conference
+      - BEA Personal Income and Outlays, including PCE inflation
+      - "BEA GDP releases: advance, second and third estimates"
+      - Advance Monthly Sales for Retail and Food Services
+      - ISM Manufacturing PMI
+      - ISM Services PMI
+      - Job Openings and Labor Turnover Survey
+      - Initial Unemployment Insurance Claims
+      - Conference Board Consumer Confidence
+      - University of Michigan Consumer Sentiment, preliminary and final
+      - Advance Report on Durable Goods
+      - Scheduled Federal Reserve Chair monetary-policy testimony to Congress
+    context_only: >
+      Other speeches, regional surveys, Treasury auctions, company earnings
+      and ordinary Federal Reserve official appearances may be recorded as
+      contextual tags but do not create a B0 blackout.
+    change_control: >
+      Event classes are never added or removed based on observed backtest
+      profitability without a registered rule-change hypothesis validated out
+      of sample.
+    releases_at_0830: >
+      Included in the calendar and tagging. Their standard blackout ends
+      before 09:45 (e.g. event 08:30, blackout 08:15 to 09:00), so they do not
+      by themselves prevent a 09:45 entry.
+  blackout_minutes_before: 15
+  blackout_minutes_after: 30
+  blackout_interval:
+    definition: "[scheduled time - 15 minutes, scheduled time + 30 minutes): start inclusive, end exclusive"
+    reentry: new entries may first be considered at the first regular five-minute decision point at or after the blackout end
+    example: "event 10:00 -> blackout 09:45 <= t < 10:30 -> first eligible decision 10:30"
+    overlaps: >
+      Overlapping blackouts are merged (e.g. FOMC decision 14:00 and press
+      conference 14:30 -> one blackout 13:45 to 15:00).
+  open_position_during_event:
+    rule: The strategy may not intentionally carry an open position into a Tier 1 blackout.
+    at_blackout_start:
+      - Disable new entries.
+      - Cancel every working entry order.
+      - If a position remains open, submit the normal controlled news-flatten order.
+      - Require flat confirmation.
+      - If closing fails, invoke the emergency-flatten failure-handling state machine.
+      - Preserve confirmed protective orders until flat status is established.
+    flatten_start: >
+      Begin the news-flatten procedure 1 minute before the blackout start
+      (allowing for the modelled 1-second submission delay); the account must
+      be confirmed flat no later than the blackout start. Example: 10:00 event,
+      09:45 blackout start -> begin closing at 09:44, flat by 09:45.
+    order_type: market (avoiding uncontrolled release risk outranks exit price)
+    exit_reason: SCHEDULED_NEWS_FLATTEN
+  calendar_source:
+    official_publishers:
+      - "Bureau of Labor Statistics: Employment Situation, CPI, PPI, JOLTS"
+      - "Bureau of Economic Analysis: Personal Income and Outlays/PCE, GDP"
+      - "Federal Reserve: FOMC decisions, press conferences, Chair testimony"
+      - "U.S. Census Bureau: Retail Sales, Durable Goods"
+      - "U.S. Department of Labor: Initial Unemployment Insurance Claims"
+      - "Institute for Supply Management: Manufacturing and Services PMI"
+      - "The Conference Board: Consumer Confidence"
+      - "University of Michigan Surveys of Consumers: preliminary and final sentiment"
+    record_fields: [event_id, event_name, event_category, scheduled_timestamp_utc, scheduled_timestamp_new_york, publishing_organization, source_url, source_publication_or_calendar_date, calendar_retrieval_timestamp_utc, calendar_file_hash, schedule_revision_status, notes]
+    time_basis: >
+      The release time scheduled in advance, never the time a website was
+      later scraped or the time the market first reacted.
+    artifact: >
+      A normalised, dated, hashed calendar file; raw source files or
+      snapshots preserved where licensing permits; never silently rewritten
+      after experiments are registered.
+    third_party_providers: >
+      May assist with discovery or cross-checking but can never be the sole
+      authoritative source when an official publisher's schedule exists.
 
 # --- Setup definition -----------------------------------------------------------------------------
 setup:
@@ -587,7 +681,25 @@ prop_account_rules:
   consistency_rule: TBD
   minimum_trading_days: TBD
   payout_rules: TBD
-  trading_restrictions: TBD
+  trading_restrictions:
+    news:   # Round 7: PRELIMINARY finding recorded by the rule owner, not yet verified from a saved rule document
+      firm_rule_status: ALLOWED_WITH_NO_CURRENTLY_PUBLISHED_BLACKOUT
+      strategy_policy: STRICTER_THAN_FIRM
+      compliance_verification: PENDING_ARCHIVED_RULE_CAPTURE
+      preliminary_source: >
+        Tradeify Help Center "Rules: News Trading"
+        (https://help.tradeify.co/en/articles/10495874-rules-news-trading):
+        no rule prohibiting news trading, with warnings about volatility and
+        slippage; the Select evaluation page states Tier 1 news trading is
+        permitted. The B0 blackout is therefore an independent account-survival
+        control, not a firm requirement.
+      before_evaluation_deployment:
+        - Save Tradeify's applicable news-rule page with URL, retrieval date, effective date if stated, and file hash.
+        - Verify the rule applies to Select evaluation, Select Daily funded, and any later live stage.
+        - Recheck immediately before deployment.
+        - If Tradeify becomes stricter, apply the stricter union of firm rule and strategy policy.
+        - Never loosen the strategy policy automatically because Tradeify permits news trading.
+    other_restrictions: TBD   # weekend holding, required flat times, copy trading, etc. (pending rule capture)
 
 # --- Approval record --------------------------------------------------------------------------------------------------------------------
 # Filled in ONLY when every question above is answered and you approve the

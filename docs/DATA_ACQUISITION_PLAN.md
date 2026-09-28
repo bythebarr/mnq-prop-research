@@ -108,6 +108,24 @@ the future ingestion code.
   need archived CME notices or another documented source. It must be
   resolved before real-data backtests.
 
+## 5c. Scheduled-news calendar artifacts (Round 7)
+
+* Built from the **official publishers** (BLS, BEA, Federal Reserve, Census,
+  Department of Labor, ISM, The Conference Board, University of Michigan).
+  Third-party calendars may help with discovery or cross-checks only.
+* One normalised, dated, hashed file. Each event records: `event_id`,
+  `event_name`, `event_category`, `scheduled_timestamp_utc`,
+  `scheduled_timestamp_new_york`, `publishing_organization`, `source_url`,
+  `source_publication_or_calendar_date`,
+  `calendar_retrieval_timestamp_utc`, `calendar_file_hash`,
+  `schedule_revision_status` and `notes`.
+* Times are the release times **scheduled in advance**, never scrape times
+  or market-reaction times.
+* Raw snapshots are kept where licensing permits. Files are never silently
+  rewritten after experiments are registered.
+* A date whose schedule can't be verified from an archived source is
+  `NEWS_CALENDAR_UNVERIFIED` and ineligible until resolved.
+
 ## 6. Research data versus the live execution path
 
 | Layer | Component |
