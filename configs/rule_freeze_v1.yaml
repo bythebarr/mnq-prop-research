@@ -89,7 +89,15 @@ source_data:
   vendor_timezone: UTC
   history_start_date: 2019-05-06
   history_end_date: 2026-09-25   # last fully completed trading day before this spec was written
-  higher_resolution_data_available: TBD
+  higher_resolution_data_available: >
+    yes. Databento trades and ohlcv-1s are available. The canonical
+    strategy-decision dataset remains ohlcv-1m. Higher-resolution data is for
+    execution validation, ambiguous same-minute stop/target ordering,
+    slippage analysis and selected replay investigations. Its complete
+    history is NOT downloaded automatically: cost must be estimated and
+    approved first. Until the required segment is available, the frozen
+    conservative same-bar ambiguity rule applies and every affected trade is
+    flagged.
   required_fields:               # fixed by docs/DATA_CONTRACT.md
     - timestamp_utc
     - timestamp_exchange
@@ -110,7 +118,11 @@ timezone_policy:
   storage_timezone: UTC                 # fixed by docs/DATA_CONTRACT.md
   exchange_timezone: America/Chicago    # CME local time; fixed by docs/DATA_CONTRACT.md
   rule_timezone: America/New_York   # Round 2B: session rules use New York time
-  dst_handling: TBD
+  dst_handling: >
+    All rule times are fixed local times in the IANA zone America/New_York all
+    year: 09:45 always means 09:45 New York time in both standard and
+    daylight-saving time. Convert to UTC with the time-zone database rules for
+    that date; never use a fixed UTC offset such as UTC-5.
 
 # --- Session definitions -----------------------------------------------------------
 sessions:
@@ -134,10 +146,30 @@ sessions:
     boundary: exclusive
     meaning: >
       No new position or re-entry may be initiated at or after 11:30:00. With
-      one-minute decisions the final permitted decision timestamp is 11:29:00,
-      using market information completed by that time. A position entered
-      before the cutoff may remain open only under the separately defined
-      exit and mandatory-flattening rules.
+      five-minute decisions (decision_clock) the final new-entry decision is
+      at 11:25:00. A position entered before the cutoff may remain open only
+      under the separately defined exit and mandatory-flattening rules.
+    cutoff_semantics:   # Round 4 (rule owner, 2026-09-28)
+      limits: >
+        new-entry order SUBMISSION and continued entry-order ELIGIBILITY, not
+        merely signal generation
+      at_cutoff:
+        - No new entry order may be submitted.
+        - Every unfilled or partially unfilled entry order is cancelled.
+        - No remaining entry quantity may fill at or after 11:30:00.
+        - Protective exit orders for an existing position remain active.
+        - Exit and mandatory-flattening rules are governed separately.
+      entry_counts_only_if: the fill occurs strictly before 11:30:00
+      late_fill_treatment: >
+        An order submitted before the cutoff whose fill would occur at or
+        after 11:30:00 is ineligible and is treated as CANCELLED, not filled,
+        in the backtest.
+      latency: >
+        A decision calculated before the cutoff does not qualify unless its
+        entry order is also submitted before 11:30:00. Any specified
+        calculation and submission latency (decision_clock.signal_to_order_delay)
+        must be modelled; a decision made just before the cutoff can never
+        produce an instantaneous earlier fill.
   # reference_windows: deliberately UNRESOLVED until structural levels are
   # defined. The owner may later use overnight, prior regular session, opening
   # range, PDH, PDL, PDC or other windows, but NONE may be assumed or coded.
@@ -149,8 +181,33 @@ sessions:
 
 # --- Decision-clock timing ------------------------------------------------------------
 decision_clock:
-  decision_bar_interval: TBD
-  decision_point: TBD
+  decision_bar_interval:
+    interval: 5min
+    built_from: canonical one-minute bars (start-stamped, D-008)
+    alignment: >
+      Fixed America/New_York five-minute clock boundaries (09:30-09:35,
+      09:35-09:40, 09:40-09:45, 09:45-09:50, ...). Alignment never depends on
+      the historical file's first timestamp.
+    membership_example: >
+      The five-minute bar beginning 09:40 contains the one-minute bars
+      stamped 09:40, 09:41, 09:42, 09:43 and 09:44, and is complete at 09:45.
+  decision_point:
+    rule: >
+      New-entry decisions are made only after a five-minute bar has fully
+      closed. The first eligible decision is at 09:45:00 using data through
+      the completed 09:40-09:45 bar; the forming 09:45-09:50 bar is unavailable
+      to it.
+    eligible_new_entry_decision_times_ny: "09:45, 09:50, 09:55, ..., 11:25"
+    no_decision_at: "11:30 (the entry window is end-exclusive)"
+    last_decision_note: >
+      A decision at 11:25 may create an entry order after the configured
+      processing/submission latency; any unfilled remainder is cancelled at
+      11:30:00.
+    between_decisions: >
+      Working orders and protective exits may be monitored continuously
+      between decision times. The five-minute restriction applies only to
+      generating NEW entry decisions, not to risk management or emergency
+      order handling.
   signal_to_order_delay: TBD
 
 # --- Eligible trading dates ---------------------------------------------------------------
@@ -342,8 +399,12 @@ slippage:
 
 # --- Prop-account rule version ----------------------------------------------------------------------------------------------------------
 prop_account_rules:
-  firm: TBD
-  program_name: TBD
+  firm: Tradeify
+  program_name: >
+    INTENDED: Tradeify Select Daily $50K evaluation and its corresponding
+    funded stage. The exact current rules must be captured and versioned
+    (rules_document_version, rules_retrieved_date) before any account-level
+    simulation.
   rules_document_version: TBD
   rules_retrieved_date: TBD
   account_size_usd: TBD

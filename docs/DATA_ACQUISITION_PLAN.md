@@ -25,6 +25,18 @@ the future ingestion code.
 4. The Databento API key must come from an environment variable or a local
    untracked file. It is never committed or printed.
 
+## 2a. Higher-resolution data (Round 4)
+
+* Databento `trades` and `ohlcv-1s` are available, but `ohlcv-1m` stays the
+  canonical strategy-decision dataset.
+* Higher-resolution data is for execution validation, ambiguous
+  same-minute stop/target ordering, slippage analysis and selected replay
+  investigations. Only the **required segments** are fetched, each after a
+  cost estimate and owner approval (the section 2 gate applies). The complete
+  higher-resolution history is never downloaded automatically.
+* Until a required segment is available, the frozen conservative same-bar
+  rule applies, and **every affected trade is flagged**.
+
 ## 3. Raw-data immutability and appending
 
 * Raw files are stored exactly as received under `data/raw/`, with a

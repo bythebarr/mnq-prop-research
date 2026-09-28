@@ -14,7 +14,7 @@ T12, T16 and T17 were added to the template in Round 2 at the owner's request.
 | # | Phrase in the summary | What must be defined | Where it will live | Status |
 |---|---|---|---|---|
 | T1 | "opening volatility has had time to develop" | Which open (e.g. the 09:30 New York cash open or the 18:00 Globex open) and the exact delay before entries are allowed | `sessions.trading_window_start` | DEFINED (Round 3): 09:30 NY cash open; entries eligible from 09:45:00 inclusive |
-| T2 | "eligible session" | Exact entry window start and end | `sessions.trading_window_*` | DEFINED (Round 3): 09:45:00 ≤ decision < 11:30:00 NY |
+| T2 | "eligible session" | Exact entry window start and end | `sessions.trading_window_*` | DEFINED (Rounds 3–4): 09:45:00 ≤ entry submission and fill < 11:30:00 NY; five-minute decisions 09:45–11:25 |
 | T3 | "clear" / "conditions are unclear" | Confirm that "unclear" means only "at least one defined condition is not met", with no separate discretionary clarity judgement | `setup.preconditions` | OPEN |
 | T4 | "objectively measurable structure-continuation opportunity" | The complete, measurable setup condition | `setup.definition` | OPEN |
 | T5 | "meaningful price levels" / "structural level" / "relevant level" | Which level types; exact formulas; which level applies when several are nearby | `structural_levels.*` | OPEN |
