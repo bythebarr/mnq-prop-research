@@ -31,9 +31,23 @@ def test_all_unresolved_fields_are_reported_together(draft_spec):
     }
     # Every unanswered required field is reported - not just the first one.
     assert expected_unanswered <= unresolved
-    assert len(expected_unanswered) > 100
     kinds = {p.kind for p in report.problems}
     assert {"STATUS", "UNRESOLVED", "APPROVAL"} <= kinds
+
+
+def test_every_required_field_is_reported_when_all_are_blank(draft_spec):
+    # Independent of how far the draft has progressed: blank out every
+    # required field and demand that every single one is reported at once.
+    for path in REQUIRED_FIELDS:
+        *parents, leaf = path.split(".")
+        node = draft_spec
+        for part in parents:
+            node = node[part]
+        node[leaf] = "TBD"
+    unresolved = set(check_rule_freeze(draft_spec).unresolved_paths())
+    # ema/vwap dependents are only required once included; with included=TBD they are reported too.
+    assert set(REQUIRED_FIELDS) <= unresolved
+    assert len(REQUIRED_FIELDS) > 100
 
 
 def test_draft_template_contains_every_required_field(draft_spec):

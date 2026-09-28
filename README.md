@@ -121,6 +121,7 @@ mnq-prop-research/
 │   ├── data_contracts.py      ← bar schema and data validation
 │   ├── hashing.py             ← reproducible fingerprints
 │   ├── experiment_registry.py ← pre-registration of experiments
+│   ├── structural_levels.py   ← Round 8 level rules (component only; not a backtest)
 │   └── synthetic_data.py      ← FAKE data for software tests only
 └── tests/                     ← automated checks of the protections
 ```

@@ -97,6 +97,20 @@ trading-session rule, and it has limits:
   genuinely "missing" from the file, but carries no price information. The
   report cannot tell this apart from a vendor fault.
 
+**Missing-minute classification (Round 8).** The ingestion layer must
+label each absent expected minute with one of three statuses
+(`MinuteStatus` in code):
+
+| Status | Meaning | Effect on structural highs and lows |
+|---|---|---|
+| `VERIFIED_NO_TRADE_MINUTE` | Confirmed that no trade occurred | Does not invalidate a high or low, since a missing trade can't set a new extreme |
+| `KNOWN_DATA_OUTAGE` | Data is known to be missing | The affected level is unavailable |
+| `UNEXPLAINED_MISSING_MINUTE` | Cause unknown (the **default** for any minute without a status) | The affected level is unavailable |
+
+The opening range is stricter: all 15 minutes must be present, whatever
+their status. How ingestion establishes these statuses is still an open
+Phase 2 design question (see `DATA_ACQUISITION_PLAN.md`).
+
 Nothing is ever forward-filled or interpolated. Filling a gap invents prices
 that never traded. How the strategy behaves around gaps is a rule-freeze
 decision (`missing_data.*`).

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -58,6 +59,19 @@ TIMESTAMP_COLUMN_ZONES: dict[str, str] = {
 SYNTHETIC_MARKER = "SYNTHETIC"
 
 _OFFSET_RE = re.compile(r"(?:Z|[+-]\d{2}:?\d{2})$")
+
+
+class MinuteStatus(str, Enum):
+    """Why an expected one-minute bar is absent (supplied by the ingestion layer).
+
+    Databento prints no bar for a minute without trades, so an absent minute is
+    not automatically a data failure. A minute with no recorded status is
+    treated as UNEXPLAINED_MISSING_MINUTE (fail closed).
+    """
+
+    VERIFIED_NO_TRADE_MINUTE = "VERIFIED_NO_TRADE_MINUTE"
+    KNOWN_DATA_OUTAGE = "KNOWN_DATA_OUTAGE"
+    UNEXPLAINED_MISSING_MINUTE = "UNEXPLAINED_MISSING_MINUTE"
 
 
 class DataLoadError(Exception):

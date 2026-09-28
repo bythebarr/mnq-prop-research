@@ -84,6 +84,16 @@ Frozen baseline
   evidence. More attempts demand stronger evidence.
 * **Report, don't repair.** Data problems are reported and handled by a
   documented policy. They are never silently fixed.
+* **Closed level set.** Baseline B0 uses exactly seven objective structural
+  levels: prior-RTH high, low and close; overnight high and low; and
+  opening-range high and low. Anything else (VWAP, moving averages,
+  Fibonacci, volume profile, swings, zones, discretionary or ML levels)
+  needs the registered rule-change process.
+* **Candidate parameters are not market truths.** Numbers such as the
+  proximity-tolerance values (2% of range, 2-point minimum, 10-point
+  maximum) are not optimised. Robustness testing must show that acceptable
+  results hold across a broad region of neighbouring values; dependence on
+  one exact value counts as evidence *against* robustness.
 * **No claims of edge** until evidence from every stage supports one.
 * **No live trading, broker connectivity, credentials or paid services** in
   the research phase.

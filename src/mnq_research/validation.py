@@ -29,6 +29,7 @@ from typing import Any
 from mnq_research.config import load_mapping
 from mnq_research.data_contracts import EXCHANGE_TIMEZONE, REQUIRED_COLUMNS
 from mnq_research.hashing import hash_object
+from mnq_research.structural_levels import B0_LEVEL_TYPES
 
 STATUS_DRAFT = "DRAFT_NON_EXECUTABLE"
 STATUS_FROZEN = "FROZEN_APPROVED"
@@ -108,6 +109,10 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "structural_levels.calculation_method",
     "structural_levels.level_expiry",
     "structural_levels.level_proximity_tolerance",
+    "structural_levels.missing_data_treatment",
+    "structural_levels.price_validation",
+    "structural_levels.clustering_method",
+    "structural_levels.decision_use",
     # Market structure
     "market_structure.structure_bar_interval",
     "market_structure.swing_point_definition",
@@ -442,6 +447,10 @@ def check_rule_freeze(spec: Any, spec_path: str | Path | None = None) -> RuleFre
                 )
             )
 
+    # 2c. Structural levels: exactly the implemented B0 set, sane proximity parameters
+    for problem in _structural_level_problems(spec):
+        add(problem)
+
     # 3. Any other unanswered value anywhere (e.g. nested TBDs, extra fields)
     for path, value in _iter_leaves(spec, ""):
         top = path.split(".", 1)[0].split("[", 1)[0]
@@ -483,6 +492,56 @@ def check_rule_freeze(spec: Any, spec_path: str | Path | None = None) -> RuleFre
                 )
             )
     return report
+
+
+def _structural_level_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
+    problems: list[RuleFreezeProblem] = []
+    level_types = get_path(spec, "structural_levels.level_types")
+    if isinstance(level_types, list) and level_types and not any(is_unresolved(v) for v in level_types):
+        allowed = {t.value for t in B0_LEVEL_TYPES}
+        unknown = [v for v in level_types if v not in allowed]
+        if unknown:
+            problems.append(
+                RuleFreezeProblem(
+                    "structural_levels.level_types",
+                    "INVALID",
+                    f"not implemented B0 level types: {unknown} (adding one needs a registered rule change)",
+                )
+            )
+        if len(set(level_types)) != len(level_types):
+            problems.append(RuleFreezeProblem("structural_levels.level_types", "INVALID", "duplicate level types"))
+        missing = sorted(allowed - set(level_types))
+        if missing:
+            problems.append(
+                RuleFreezeProblem("structural_levels.level_types", "INVALID", f"B0 requires all seven types; missing {missing}")
+            )
+    params = get_path(spec, "structural_levels.level_proximity_tolerance.parameters")
+    if isinstance(params, dict):
+        numbers = {k: params.get(k) for k in ("fraction_of_prior_rth_range", "minimum_points", "maximum_points")}
+        if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in numbers.values()):
+            if not 0 < numbers["fraction_of_prior_rth_range"] < 1:
+                problems.append(
+                    RuleFreezeProblem(
+                        "structural_levels.level_proximity_tolerance.parameters.fraction_of_prior_rth_range",
+                        "INVALID",
+                        "must be between 0 and 1",
+                    )
+                )
+            if not 0 < numbers["minimum_points"] <= numbers["maximum_points"]:
+                problems.append(
+                    RuleFreezeProblem(
+                        "structural_levels.level_proximity_tolerance.parameters",
+                        "INVALID",
+                        "require 0 < minimum_points <= maximum_points",
+                    )
+                )
+        elif not any(is_unresolved(v) for v in numbers.values()):
+            problems.append(
+                RuleFreezeProblem(
+                    "structural_levels.level_proximity_tolerance.parameters", "INVALID", "parameters must be numbers"
+                )
+            )
+    return problems
 
 
 def _is_tz_aware_timestamp(value: Any) -> bool:

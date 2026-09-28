@@ -199,13 +199,52 @@ sessions:
         calculation and submission latency (decision_clock.signal_to_order_delay)
         must be modelled; a decision made just before the cutoff can never
         produce an instantaneous earlier fill.
-  # reference_windows: deliberately UNRESOLVED until structural levels are
-  # defined. The owner may later use overnight, prior regular session, opening
-  # range, PDH, PDL, PDC or other windows, but NONE may be assumed or coded.
-  # "Prior day", "overnight" and "opening range" have no assumed conventional
-  # or vendor meaning: each will need an exact timezone, start boundary, end
-  # boundary, inclusion rule, holiday treatment and contract-roll treatment.
-  reference_windows: TBD
+  # Round 8 (rule owner, 2026-09-28). All boundaries America/New_York with its
+  # historical daylight-saving rules. Implemented in src/mnq_research/structural_levels.py.
+  reference_windows:
+    PRIOR_RTH:
+      start: "09:30:00 inclusive"
+      end: "16:00:00 exclusive"
+      timezone: America/New_York
+      bars: start-stamped one-minute bars 09:30 through 15:59
+      prior_day_meaning: >
+        The most recent previous NORMAL FULL 09:30-16:00 cash-session window,
+        never the prior full Globex session. Closed exchange holidays are
+        skipped. Scheduled early-close sessions cannot supply PRIOR_RTH
+        levels: continue backward to the most recent normal full session. A
+        Monday normally references the preceding Friday unless that Friday
+        was closed or shortened, in which case continue backward.
+      contract: >
+        The specific quarterly MNQ contract designated for trading on the
+        CURRENT strategy date, even if it was not yet the lead contract during
+        the reference session (avoids an old-contract price discontinuity).
+        That contract must have valid data for the entire required window,
+        otherwise the affected prior-RTH levels are unavailable.
+    OVERNIGHT:
+      start: actual CME Globex session open associated with the current trade date, inclusive
+      end: "09:30:00 America/New_York, exclusive"
+      normal_start: 18:00:00 America/New_York on the preceding calendar date
+      calendar: >
+        Never assume 18:00 when CME publishes a different holiday or special
+        opening; use the versioned CME session calendar. The window belongs to
+        the current CME trade date, not the local calendar date.
+      contract: >
+        Only the quarterly MNQ contract designated for the current strategy
+        date. Never combine overnight observations from two contracts.
+      unavailable_when: >
+        The session is absent, shortened, opened at an unverified time or
+        contains a known acquisition outage. (Scheduled early-close current
+        dates are already ineligible.)
+    OPENING_RANGE:
+      start: "09:30:00 inclusive"
+      end: "09:45:00 exclusive"
+      timezone: America/New_York
+      bars: exactly the 15 start-stamped one-minute bars 09:30 through 09:44
+      available_from: "09:45:00"
+      contract: the MNQ contract designated for the current strategy date
+      holidays: >
+        The window does not change after a prior holiday; the current date must
+        still be a normal full eligible session.
   early_close_handling: >
     Round 6: scheduled CME early-close sessions are NOT eligible for new
     strategy trades in Baseline B0; the normal 09:45-11:30 window is not run
@@ -491,10 +530,125 @@ direction:
 
 # --- Structural level definitions -------------------------------------------------------------------------
 structural_levels:
-  level_types: TBD
-  calculation_method: TBD
-  level_expiry: TBD
-  level_proximity_tolerance: TBD
+  # Round 8 answers (rule owner, 2026-09-28). A deliberately small set of
+  # objective, reproducible levels derived from price and time only.
+  level_types:
+    - PRIOR_RTH_HIGH
+    - PRIOR_RTH_LOW
+    - PRIOR_RTH_CLOSE
+    - OVERNIGHT_HIGH
+    - OVERNIGHT_LOW
+    - OPENING_RANGE_HIGH
+    - OPENING_RANGE_LOW
+  excluded_from_b0:   # only via the registered rule-change process
+    - discretionary support/resistance
+    - manually drawn levels
+    - volume profile levels
+    - VWAP
+    - moving averages
+    - Fibonacci levels
+    - detected supply/demand zones
+    - prior swing highs or lows
+    - machine-learning-generated levels
+  calculation_method:
+    source: >
+      Canonical one-minute bars for all seven levels; never resampled
+      five-minute highs, lows or closes.
+    PRIOR_RTH_HIGH: maximum high across valid one-minute bars in the PRIOR_RTH window
+    PRIOR_RTH_LOW: minimum low across valid one-minute bars in the PRIOR_RTH window
+    PRIOR_RTH_CLOSE:
+      rule: close of the final valid one-minute bar in the PRIOR_RTH window (normally the 15:59 bar)
+      fallback: >
+        If the 15:59 bar is absent solely because Databento confirms no trade
+        occurred, use the last observed trade-bar close before 16:00 only when
+        it is no more than five minutes old; record the source timestamp and
+        staleness. If no valid closing observation exists from 15:55 through
+        just before 16:00, PRIOR_RTH_CLOSE is unavailable.
+    OVERNIGHT_HIGH: maximum high across valid one-minute bars in the OVERNIGHT window
+    OVERNIGHT_LOW: minimum low across valid one-minute bars in the OVERNIGHT window
+    OPENING_RANGE_HIGH: maximum high across the 15 required OPENING_RANGE one-minute bars
+    OPENING_RANGE_LOW: minimum low across the 15 required OPENING_RANGE one-minute bars
+  missing_data_treatment:
+    minute_statuses: [VERIFIED_NO_TRADE_MINUTE, KNOWN_DATA_OUTAGE, UNEXPLAINED_MISSING_MINUTE]
+    classification: >
+      A minute Databento omitted because no trade occurred is not automatically
+      a data-acquisition failure; ingestion must distinguish the three statuses
+      where possible.
+    prior_rth_and_overnight_high_low: >
+      A verified no-trade minute does not invalidate the level (an omitted
+      trade could not set a new high or low). A known data outage or
+      unexplained missing interval makes the affected level unavailable.
+      OHLC prices are never forward-filled.
+    opening_range: >
+      All 15 expected one-minute bars are required. Any absent, invalid or
+      unverified component minute makes BOTH opening-range levels unavailable
+      and the date ineligible for new entries.
+    five_minute_relationship: >
+      Levels are calculated independently from one-minute data, so an
+      incomplete five-minute decision bar never retroactively alters a
+      correctly calculated level. At a decision time every required level
+      must be available AND every required five-minute decision bar complete;
+      passing one never excuses failing the other.
+  price_validation:
+    - Be a finite positive number.
+    - Align to the MNQ 0.25-point tick.
+    - Derive only from data available by the relevant decision time.
+    - Preserve its source window, source contract and calculation timestamp.
+    - Preserve the identifiers or manifest reference of its component data.
+    - Opening-range levels cannot exist before 09:45.
+  level_expiry:
+    scope: all seven levels are created for one current strategy trade date
+    new_entries: expire for new-entry purposes at 11:30:00 America/New_York
+    open_position: >
+      For a position validly entered before 11:30, its frozen entry-time
+      levels remain available for management, stop and target
+      interpretation and audit until the position closes.
+    complete_expiry: >
+      At the earlier of (1) confirmation that the current position is flat
+      after the final trade, or (2) the 15:55 emergency-flatten boundary.
+    persistence: >
+      A touch, temporary breach, rejection or accepted break never deletes a
+      level. The original price is kept with a chronological state history
+      (states untouched, approached, touched, breached, rejected, accepted
+      above, accepted below; transitions defined in a later round, NOT in
+      Round 8). No expiry after a number of touches. A frozen daily level is
+      never moved, redrawn or recalculated; the opening range freezes at
+      09:45 and never expands.
+  level_proximity_tolerance:
+    formula: >
+      prior_rth_range = PRIOR_RTH_HIGH - PRIOR_RTH_LOW;
+      raw = fraction_of_prior_rth_range x prior_rth_range;
+      tolerance = clamp(raw, minimum_points, maximum_points), then rounded
+      UP to the next valid 0.25-point tick.
+    parameters:   # candidate B0 values, NOT universal market truths; not optimised
+      fraction_of_prior_rth_range: 0.02
+      minimum_points: 2.00
+      maximum_points: 10.00
+    examples: "range 75 -> raw 1.50 -> 2.00; range 300 -> 6.00 -> 6.00; range 700 -> 14.00 -> 10.00"
+    unavailable: If the prior-RTH range is unavailable or invalid, the tolerance is unavailable and the date is not eligible for new entries.
+    robustness: >
+      Later robustness testing must examine neighbouring values and show
+      acceptable results occupy a broad parameter region; a result that
+      depends on one exact tolerance is evidence against robustness.
+  clustering_method:
+    steps:
+      - Sort all available structural levels from lowest to highest price.
+      - Put adjacent levels in the same cluster when the gap between them is <= the daily proximity tolerance.
+      - Apply transitively (A-B and B-C within tolerance => A, B, C together even if A-C is not).
+    preserve_per_cluster: [cluster_id, lower_boundary (minimum constituent price), upper_boundary (maximum constituent price), representative_price (median constituent price), constituent level types, constituent prices, source windows, source contract, creation time]
+    identities: Never average constituent prices and discard their identities.
+    single_level: An isolated level is a valid one-level cluster whose boundaries and representative price are identical.
+  decision_use:
+    zone_rule: >
+      Later acceptance, rejection, confirmation, stop and target rules operate
+      on the cluster as a zone, never treating nearby levels as independent
+      opportunities.
+    conservative_distances:
+      - A long approaching resistance from below measures to the cluster's lower boundary.
+      - A short approaching support from above measures to the cluster's upper boundary.
+      - Invalidation that requires price to move completely beyond a cluster uses the far boundary.
+      - Never use the representative median where it would make room-to-target or risk look more favourable.
+    not_yet_defined: acceptance, confirmation, entry, stop and target rules (later rounds)
 
 # --- Market structure (added Round 2) -------------------------------------------------------------------
 market_structure:

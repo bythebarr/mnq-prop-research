@@ -306,6 +306,34 @@ first breakout, whichever comes first."
 level? Give the answer in ticks or points.
 **Illustrative only:** "Within 2 ticks."
 
+### `structural_levels.missing_data_treatment`
+*(Added in Round 8.)*
+**Question:** How do absent one-minute bars affect each level? Distinguish
+verified no-trade minutes, known data outages and unexplained gaps.
+**Illustrative only:** "A verified no-trade minute doesn't invalidate a
+high or low. Any outage makes the level unavailable."
+
+### `structural_levels.price_validation`
+*(Added in Round 8.)*
+**Question:** What must every level satisfy before it can be used? For
+example, a finite positive price, on the tick grid, knowable by the decision
+time, with its source recorded.
+**Illustrative only:** "A finite positive price on the 0.25 grid, with its
+source window and contract recorded."
+
+### `structural_levels.clustering_method`
+*(Added in Round 8.)*
+**Question:** How are nearby levels grouped into one zone, and what is kept
+for each zone?
+**Illustrative only:** "Sort by price. Join neighbours within tolerance,
+transitively. Keep every constituent level."
+
+### `structural_levels.decision_use`
+*(Added in Round 8.)*
+**Question:** How do later rules measure distances to a zone, so that room
+and risk are never made to look better than they are?
+**Illustrative only:** "A long measures to a resistance zone's lower edge."
+
 ### `market_structure.structure_bar_interval`
 *(Added in Round 2 for "developing market structure" in the summary.)*
 **Question:** Which bar length is market structure judged on?

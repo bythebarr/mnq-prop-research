@@ -256,3 +256,41 @@ example test stops a wrong worked example from contradicting the numbers,
 as happened in Round 7.
 **Reversible:** only through the registered rule-change process.
 **Status:** CONFIRMED by the project owner on 2026-09-28.
+
+## D-023 — Structural levels implemented as a stand-alone component (Round 8)
+**Decision:** At the owner's request (tests were required), the Round 8
+rules are implemented in `src/mnq_research/structural_levels.py`. The module
+is **pure and fail-closed**, reads its parameters from the rule file, and is
+not connected to any backtest. The spec stays `DRAFT_NON_EXECUTABLE`.
+
+Engineering choices within the owner's rules (please confirm or change):
+1. **Unknown calendar weekday:** a weekday missing from the session calendar
+   makes the prior-RTH reference unknown, so those levels are unavailable.
+   The code never guesses.
+2. **Missing-minute default:** an absent minute with no recorded status is
+   `UNEXPLAINED_MISSING_MINUTE`.
+3. **Prior close:** the "within five minutes" rule and the "15:55 through
+   just before 16:00" window are one constant. Staleness is measured from
+   the source bar's close to 16:00 and recorded. Every minute after the
+   source bar must be a verified no-trade minute.
+4. **Zero or negative prior-RTH range:** treated as invalid, so the tolerance
+   is unavailable and the day is not eligible for new entries.
+5. **Representative price:** the statistical median. With an even number of
+   constituents this can fall between ticks. It is informational only and is
+   never used for conservative distances.
+6. **Ties in clustering:** levels at the same price are ordered by level
+   type name.
+
+The validator now requires `structural_levels.level_types` to equal the
+seven implemented types exactly, and checks the proximity parameters
+(0 < fraction < 1, 0 < minimum ≤ maximum). Four new required fields were
+added: `missing_data_treatment`, `price_validation`, `clustering_method`
+and `decision_use`.
+
+The Phase 1 test assertion "more than 100 fields unanswered" was replaced
+by a stronger test that blanks every required field and requires all of
+them to be reported.
+**Reversible:** yes; the level rules themselves only through the registered
+rule-change process.
+**Status:** Rules CONFIRMED by the owner (Round 8); engineering choices 1–6
+PENDING owner confirmation.

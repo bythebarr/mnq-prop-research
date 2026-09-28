@@ -17,7 +17,7 @@ T12, T16 and T17 were added to the template in Round 2 at the owner's request.
 | T2 | "eligible session" | Exact entry window start and end | `sessions.trading_window_*` | DEFINED (Rounds 3–4): 09:45:00 ≤ entry submission and fill < 11:30:00 NY; five-minute decisions 09:45–11:25 |
 | T3 | "clear" / "conditions are unclear" | Confirm that "unclear" means only "at least one defined condition is not met", with no separate discretionary clarity judgement | `setup.preconditions` | OPEN |
 | T4 | "objectively measurable structure-continuation opportunity" | The complete, measurable setup condition | `setup.definition` | OPEN |
-| T5 | "meaningful price levels" / "structural level" / "relevant level" | Which level types; exact formulas; which level applies when several are nearby | `structural_levels.*` | OPEN |
+| T5 | "meaningful price levels" / "structural level" / "relevant level" | Which level types; exact formulas; which level applies when several are nearby | `structural_levels.*` | DEFINED (Round 8): seven level types, windows, clustering into zones; zone decision-use rules in later rounds |
 | T6 | "defined acceptance beyond a structural level" | Bars, closes versus wicks, tick distance and count | `acceptance_rejection_breakout.acceptance_definition` | OPEN |
 | T7 | "sufficient confirmation that continuation is more likely than immediate rejection" | A concrete event. "More likely" cannot be computed live, so this must be an observable rule | `confirmation.*` | OPEN |
 | T8 | "adequate unobstructed room toward the next meaningful level" | Minimum room (points or multiple of risk), and what counts as an obstruction | `room_to_target.*` | OPEN |
