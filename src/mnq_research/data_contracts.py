@@ -39,6 +39,7 @@ REQUIRED_COLUMNS: tuple[str, ...] = (
     "timestamp_exchange",
     "trading_date",
     "contract",
+    "instrument_id",
     "open",
     "high",
     "low",
@@ -339,6 +340,7 @@ def validate_bars(df: pd.DataFrame, max_examples: int = 3) -> DataValidationRepo
         blank = df[column].astype("string").str.strip().eq("").fillna(False)
         if blank.any():
             err(Issue("BLANK_TEXT", f"column '{column}' has blank values", int(blank.sum())))
+    _check_instrument_ids(df, err, warn, max_examples)
     bad_zones = sorted({z for z in df["source_timezone"].dropna().unique() if not _is_valid_zone(z)})
     if bad_zones:
         err(Issue("INVALID_SOURCE_TIMEZONE", f"not IANA time-zone names: {bad_zones[:5]}"))
@@ -410,6 +412,47 @@ def validate_bars(df: pd.DataFrame, max_examples: int = 3) -> DataValidationRepo
                 )
             )
     return report
+
+
+def _check_instrument_ids(df: pd.DataFrame, err, warn, max_examples: int) -> None:
+    """instrument_id must be a non-negative integer, consistent with ``contract``.
+
+    One contract symbol with several IDs in one file is an error (rows from
+    different instruments are being mixed). One ID used by several symbols is
+    only a warning: exchanges can recycle IDs after a contract expires.
+    """
+    ids = df["instrument_id"]
+    if not pd.api.types.is_integer_dtype(ids):
+        numeric = pd.to_numeric(ids, errors="coerce")
+        if numeric.isna().any() or not (numeric.dropna() % 1 == 0).all():
+            err(Issue("NON_INTEGER_INSTRUMENT_ID", "instrument_id must be a whole number"))
+            return
+        ids = numeric
+    negative = ids < 0
+    if negative.any():
+        err(Issue("NEGATIVE_INSTRUMENT_ID", "instrument_id is negative", int(negative.sum())))
+    pairs = pd.DataFrame({"contract": df["contract"], "instrument_id": ids}).dropna().drop_duplicates()
+    ids_per_contract = pairs.groupby("contract")["instrument_id"].nunique()
+    conflicted = ids_per_contract[ids_per_contract > 1]
+    if not conflicted.empty:
+        err(
+            Issue(
+                "CONTRACT_HAS_MULTIPLE_INSTRUMENT_IDS",
+                "one contract symbol appears with more than one instrument_id",
+                len(conflicted),
+                [f"{c}: {sorted(pairs.loc[pairs.contract == c, 'instrument_id'].tolist())}" for c in conflicted.index[:max_examples]],
+            )
+        )
+    contracts_per_id = pairs.groupby("instrument_id")["contract"].nunique()
+    shared = contracts_per_id[contracts_per_id > 1]
+    if not shared.empty:
+        warn(
+            Issue(
+                "INSTRUMENT_ID_SHARED_BY_CONTRACTS",
+                "one instrument_id appears with more than one contract symbol (possible ID reuse; check symbology)",
+                len(shared),
+            )
+        )
 
 
 def _is_valid_zone(name: object) -> bool:

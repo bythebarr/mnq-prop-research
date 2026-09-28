@@ -189,3 +189,28 @@ sizing, and no-trade conditions), and the original template had nowhere to
 define them. As required fields, they cannot be forgotten.
 **Reversible:** yes, by the rule owner.
 **Status:** CONFIRMED by the project owner on 2026-09-28.
+
+## D-019 — `instrument_id` added to the data contract
+**Decision:** Every bar carries the vendor's `instrument_id` next to
+`contract`. Validation rejects non-integer or negative IDs, and any
+contract symbol that appears with more than one ID in a file. An ID used by
+several symbols is a warning only, because exchanges can recycle IDs after
+expiry.
+**Why:** The rule owner requires the contract symbol and instrument ID on
+every row (Round 2B). It makes each bar traceable to its exact Databento
+instrument.
+**Reversible:** yes.
+**Status:** CONFIRMED by the project owner on 2026-09-28 (requested in Round 2B).
+
+## D-020 — Databento for research only; separate live execution path
+**Decision:** Databento `GLBX.MDP3` `ohlcv-1m`, as individual contracts, is
+the canonical historical research source. Live execution will be Quantower
+(C#) to Tradeify via Rithmic. No Databento component may sit in the order
+path. Data-parity and signal-parity gates come before paper or prop
+deployment. Paid downloads need a cost estimate and explicit owner
+approval. Details are in `docs/DATA_ACQUISITION_PLAN.md`.
+**Why:** It keeps research reproducible, stops a research dependency from
+leaking into execution, and proves that the backtested signals are the ones
+that will actually trade.
+**Reversible:** by the rule owner.
+**Status:** CONFIRMED by the project owner on 2026-09-28.

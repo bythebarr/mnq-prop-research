@@ -9,7 +9,7 @@ contract, time-zone handling, duplicate / bad-OHLC / missing-bar detection and
 hashing can be exercised without real data.
 
 Every row is labelled: ``source`` is ``SYNTHETIC_FAKE_DATA_NOT_MARKET_DATA``
-and ``contract`` is ``FAKE-MNQ``. Output files also get a sidecar
+``contract`` is ``FAKE-MNQ`` and ``instrument_id`` is 0. Output files also get a sidecar
 ``.manifest.json`` repeating the warning.
 
 The same seed and parameters always produce identical data (deterministic).
@@ -29,6 +29,7 @@ from mnq_research.hashing import hash_dataframe, hash_file_bytes
 
 SYNTHETIC_SOURCE = "SYNTHETIC_FAKE_DATA_NOT_MARKET_DATA"
 SYNTHETIC_CONTRACT = "FAKE-MNQ"
+SYNTHETIC_INSTRUMENT_ID = 0  # fake; real IDs come from Databento symbology
 SYNTHETIC_WARNING = (
     "SYNTHETIC FAKE DATA - randomly generated for software testing only. "
     "NOT market data. Must never be used as evidence of strategy performance."
@@ -84,6 +85,7 @@ def generate_synthetic_bars(spec: SyntheticSpec = SyntheticSpec()) -> pd.DataFra
             "timestamp_exchange": ts.dt.tz_convert(EXCHANGE_TIMEZONE),
             "trading_date": cme_trading_date(ts).dt.date,
             "contract": SYNTHETIC_CONTRACT,
+            "instrument_id": SYNTHETIC_INSTRUMENT_ID,
             "open": open_,
             "high": high,
             "low": low,

@@ -17,6 +17,7 @@ Each row is **one one-minute bar for one contract**.
 | `timestamp_exchange` | timezone-aware timestamp, **America/Chicago** | The same instant in CME local time. |
 | `trading_date` | date | The CME Globex trading date. The session opening at 17:00 Chicago time belongs to the **next** calendar day. |
 | `contract` | text | The specific contract, e.g. `MNQH5`. Synthetic data uses `FAKE-MNQ`. |
+| `instrument_id` | whole number ≥ 0 | The vendor's numeric instrument ID (Databento `instrument_id`). Must map one-to-one to `contract` within a file. Synthetic data uses `0`. |
 | `open`, `high`, `low`, `close` | number > 0 | Prices in index points. |
 | `volume` | number ≥ 0 | Contracts traded in the minute. |
 | `source` | text | Where the data came from. Synthetic data says `SYNTHETIC_FAKE_DATA_NOT_MARKET_DATA`. |
@@ -65,6 +66,7 @@ without a zone could mean anything.
 | `IMPOSSIBLE_OHLC` | high below open, close or low, or low above open, close or high |
 | `NEGATIVE_VOLUME` / `NON_NUMERIC_VOLUME` | volume problems |
 | `BLANK_TEXT` / `INVALID_SOURCE_TIMEZONE` | blank contract or source; unknown zone name |
+| `NON_INTEGER_INSTRUMENT_ID` / `NEGATIVE_INSTRUMENT_ID` / `CONTRACT_HAS_MULTIPLE_INSTRUMENT_IDS` | instrument_id not a valid ID, or one contract carrying several IDs |
 | `EXCHANGE_TIME_MISMATCH` | `timestamp_exchange` is a different instant from `timestamp_utc` |
 | `BAD_TRADING_DATE` / `TRADING_DATE_MISMATCH` | trading date unreadable or not following the CME convention |
 | `INGESTED_BEFORE_BAR_CLOSED` | the data claims to have been stored before the bar finished, which is impossible without future information. It usually means end-labelled bars were not converted |
@@ -75,6 +77,7 @@ without a zone could mean anything.
 |---|---|
 | `MISSING_BARS` | minutes inside the regular Globex schedule with no bar |
 | `BAR_OUTSIDE_REGULAR_SCHEDULE` | bars during the daily halt or the weekend |
+| `INSTRUMENT_ID_SHARED_BY_CONTRACTS` | one ID used by several contract symbols (IDs can be recycled after expiry; verify against symbology) |
 
 All problems are collected and reported together. Validation never stops at
 the first problem.

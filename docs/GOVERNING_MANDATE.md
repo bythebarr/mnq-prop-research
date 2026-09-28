@@ -66,7 +66,7 @@ Frozen baseline
 | Justified changes | Only changes with a documented, a-priori rationale. Each is a new experiment. Broad, stable parameter *regions* are examined, not single best points | Every configuration counted in the registry |
 | Out-of-sample / walk-forward | Chronological validation on data not used for any decision. The untouched holdout is used **once** | Pre-registered splits; no peeking |
 | Monte Carlo | Resample trade sequences to estimate the chance of passing the evaluation and surviving funded rules (drawdown type, daily limit, consistency, payouts) | Survival estimates under the recorded prop-rule version |
-| Paper trading | Same frozen logic on live data with no money at risk | Behaviour matches the backtest engine |
+| Paper trading | Same frozen logic on live data with no money at risk | Behaviour matches the backtest engine; **Databento-vs-Rithmic data parity** and **Python-vs-C# signal parity** tests passed first (see `DATA_ACQUISITION_PLAN.md`) |
 | Forward validation | A sustained live-data period compared against expectations | Pre-agreed acceptance criteria |
 | Prop deployment | Only then consider a separate C# adapter for Quantower execution | A separate decision, outside this phase |
 

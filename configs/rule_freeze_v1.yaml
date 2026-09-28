@@ -64,24 +64,38 @@ instrument:
 contract_roll:
   roll_trigger: TBD
   roll_timing: TBD
-  price_series_adjustment: TBD
+  price_series_adjustment: >
+    Unadjusted individual contracts. No back-adjusted continuous series is
+    used for execution testing. Contracts are joined only by the frozen roll
+    rule, with every roll transition flagged so a contract change cannot
+    generate an artificial signal.
   open_position_at_roll: TBD
 
 # --- Source data and required fields ------------------------------------------
 source_data:
-  vendor: TBD
-  dataset_name: TBD
+  # Round 2B answers (rule owner, 2026-09-28)
+  vendor: Databento   # historical research data ONLY; never in the live order path
+  dataset_name: >
+    Databento GLBX.MDP3, schema ohlcv-1m, individual quarterly MNQ futures
+    contracts (no back-adjusted continuous series), downloaded together with
+    the instrument-definition and symbology data. The actual contract symbol
+    and instrument ID are preserved on every row.
   base_bar_interval: 1min        # fixed by docs/DATA_CONTRACT.md
-  vendor_timestamp_convention: TBD
-  vendor_timezone: TBD
-  history_start_date: TBD
-  history_end_date: TBD
+  vendor_timestamp_convention: >
+    bar_start. Databento ts_event marks the start of the minute in UTC: a bar
+    stamped 13:45:00 UTC covers trades from 13:45:00 inclusive to 13:46:00
+    exclusive and may not be used for a decision before 13:46:00. Databento
+    prints no bar for a minute with no trades.
+  vendor_timezone: UTC
+  history_start_date: 2019-05-06
+  history_end_date: 2026-09-25   # last fully completed trading day before this spec was written
   higher_resolution_data_available: TBD
   required_fields:               # fixed by docs/DATA_CONTRACT.md
     - timestamp_utc
     - timestamp_exchange
     - trading_date
     - contract
+    - instrument_id
     - open
     - high
     - low
@@ -95,7 +109,7 @@ source_data:
 timezone_policy:
   storage_timezone: UTC                 # fixed by docs/DATA_CONTRACT.md
   exchange_timezone: America/Chicago    # CME local time; fixed by docs/DATA_CONTRACT.md
-  rule_timezone: TBD
+  rule_timezone: America/New_York   # Round 2B: session rules use New York time
   dst_handling: TBD
 
 # --- Session definitions -----------------------------------------------------------

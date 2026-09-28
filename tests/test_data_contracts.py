@@ -120,3 +120,14 @@ def test_csv_with_utc_offsets_is_accepted(clean_bars, tmp_path):
     path = tmp_path / "aware.csv"
     clean_bars.head(20).to_csv(path, index=False)
     assert validate_bars(load_bars(path)).is_valid
+
+
+def test_instrument_id_must_map_to_one_contract(clean_bars):
+    clean_bars.loc[5, "instrument_id"] = 12345
+    report = validate_bars(clean_bars)
+    assert "CONTRACT_HAS_MULTIPLE_INSTRUMENT_IDS" in report.error_codes()
+
+
+def test_missing_instrument_id_column_is_rejected(clean_bars):
+    report = validate_bars(clean_bars.drop(columns=["instrument_id"]))
+    assert report.error_codes() == {"MISSING_COLUMNS"}

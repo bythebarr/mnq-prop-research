@@ -1,0 +1,92 @@
+# Data Acquisition Plan (requirements for Phase 2)
+
+Recorded from the rule owner's Round 2B answers, 2026-09-28. **Nothing here
+has been implemented or downloaded yet.** These are binding requirements for
+the future ingestion code.
+
+## 1. Source
+
+| Item | Requirement |
+|---|---|
+| Provider | **Databento**. Historical research data only. |
+| Dataset / schema | `GLBX.MDP3`, schema `ohlcv-1m` |
+| Instruments | Individual quarterly MNQ futures contracts, **not** a back-adjusted continuous series |
+| Companion data | Instrument-definition and symbology data, downloaded alongside the bars |
+| Per-row identity | Actual contract symbol (`contract`) **and** Databento `instrument_id` on every row (enforced by the data contract) |
+| Range | 2019-05-06 to 2026-09-25 (the last fully completed trading day before the spec was written) |
+
+## 2. Cost gate: nothing is bought automatically
+
+1. Before any download, use Databento's metadata and cost-estimation
+   functionality to report the **expected charge** for the exact request.
+2. Show the estimate to the rule owner and **wait for explicit approval**.
+3. Never purchase a subscription, or start a material paid download,
+   automatically.
+4. The Databento API key must come from an environment variable or a local
+   untracked file. It is never committed or printed.
+
+## 3. Raw-data immutability and appending
+
+* Raw files are stored exactly as received under `data/raw/`, with a
+  manifest of hashes (`uv run mnq hash`).
+* A frozen raw file is **never modified or downloaded again**. Later
+  completed sessions are appended as **new** files with their own manifest
+  entries.
+* Conversion (Databento fixed-point prices to decimals, `ts_event` to
+  `timestamp_utc`, joining the symbology) happens in `data/interim/`, and is
+  reproducible from raw data plus code.
+
+## 4. Timestamps and absent minutes
+
+* `ts_event` marks the **start** of the minute in UTC (matches D-008). A bar
+  stamped 13:45:00 is usable only from 13:46:00.
+* UTC is canonical. America/New_York time is derived for session rules,
+  including daylight-saving transitions.
+* **Databento prints no bar for a minute with no trades.** An absent minute
+  is therefore **identified and classified**. It is never assumed to be
+  corrupt, never forward-filled, and never turned into a fabricated
+  zero-volume bar.
+* The current validator already reports absent minutes against the regular
+  Globex schedule, and never fills them. Phase 2 must add finer
+  classification. A one-minute OHLCV file alone cannot tell a "no trades"
+  minute from a vendor gap, so the method is an **open design question**
+  (options include an exchange holiday calendar, Databento status data, or
+  spot-checks against trade-level data). It will be decided before real
+  data is used.
+
+## 5. Contracts and rolls
+
+* Contracts are joined **only** by the frozen roll rule
+  (`contract_roll.*`, still TBD).
+* Every roll transition is **flagged** in the joined series, so a contract
+  change cannot create an artificial signal. No indicator, level or
+  structure may span a roll boundary unless the rule freeze explicitly says
+  how.
+
+## 6. Research data versus the live execution path
+
+| Layer | Component |
+|---|---|
+| Historical research (this repo) | Python + Databento |
+| Eventual execution (separate, later) | Quantower (C#), connected to the **Tradeify** account through **Rithmic** |
+
+* **No Databento component or API may exist in the live order-routing
+  path.**
+* Gates before any paper or prop deployment:
+  1. **Data parity:** Databento versus Rithmic bars for the same period
+     agree within documented tolerances.
+  2. **Signal parity:** the Python research implementation and the C#
+     Quantower implementation produce materially identical signals on the
+     same data.
+
+## 7. Using the history honestly
+
+* Downloading the whole history **does not** authorise using all of it for
+  strategy development.
+* Training, validation, walk-forward and final untouched-holdout boundaries
+  must be **registered** (`mnq experiment register`) **before** any
+  strategy result is examined.
+* The **final holdout must stay inaccessible** during rule development and
+  parameter selection. Phase 2 should enforce this in code, for example
+  with a data loader that refuses holdout dates unless an explicit,
+  logged final-evaluation flag is set.
