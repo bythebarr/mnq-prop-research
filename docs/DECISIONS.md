@@ -90,7 +90,8 @@ only from `timestamp_utc + 1 minute`.
 converted at ingestion. The `INGESTED_BEFORE_BAR_CLOSED` check helps catch
 mistakes.
 **Reversible:** yes, before any real data is ingested. It becomes costly
-afterwards. **Please confirm** you are comfortable with this convention.
+afterwards.
+**Status:** CONFIRMED by the project owner on 2026-09-28.
 
 ## D-009 — Exchange-local time is America/Chicago; trading date follows CME
 **Decision:** `timestamp_exchange` is in America/Chicago, the CME's local
@@ -101,6 +102,7 @@ rule-freeze question.
 **Why:** It keeps the data layer factual about the exchange and leaves
 strategy timing to the rule freeze.
 **Reversible:** yes.
+**Status:** CONFIRMED by the project owner on 2026-09-28.
 
 ## D-010 — Missing-bar detection uses the regular Globex schedule only
 **Decision:** A gap is reported when minutes inside the regular schedule
