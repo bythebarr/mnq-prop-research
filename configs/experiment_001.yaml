@@ -1,0 +1,47 @@
+# =============================================================================
+#  EXPERIMENT 001 -- PLAN ONLY.  STATUS: NOT_RUN_BLOCKED_BY_RULE_FREEZE
+# =============================================================================
+#  This experiment has NOT been run. There are NO results. It cannot be
+#  registered or run until configs/rule_freeze_v1.yaml is FROZEN_APPROVED and
+#  every `null` below has been decided.
+#
+#  Check it any time with:   uv run mnq experiment inspect
+#
+#  Fields stamped automatically at registration (leave null):
+#    created_at_utc, code_version.  rule_config_hash may be filled in by hand
+#    to "pin" the plan to a specific rule file; registration then refuses if
+#    the rule file has changed since.
+# =============================================================================
+
+experiment_id: EXP-001
+title: Frozen-baseline historical backtest of Rule Freeze v1.0
+status: NOT_RUN_BLOCKED_BY_RULE_FREEZE
+
+created_at_utc: null
+rule_config_path: configs/rule_freeze_v1.yaml
+rule_config_hash: null
+code_version: null
+
+# Which data, identified by name and by content fingerprint
+# (`uv run mnq hash <data folder>` prints a manifest hash).
+data_identifier: null
+data_hash: null
+
+# Chronological, non-overlapping splits. The holdout must stay UNTOUCHED
+# until the final evaluation. Format when decided:
+#   training_period: {start: YYYY-MM-DD, end: YYYY-MM-DD}
+training_period: null
+validation_period: null
+holdout_period: null
+
+# A frozen baseline tests exactly the frozen rules: no parameter search.
+parameters_tested: []
+num_configurations_tested: 0   # configurations actually evaluated so far
+
+# Will reference the frozen `commissions` and `slippage` sections once approved.
+cost_assumptions: null
+
+notes: >
+  Baseline experiment: run the frozen Rule Freeze v1.0 once, unchanged, with
+  realistic costs, then diagnose. No optimisation. Blocked until the rule
+  freeze is approved.

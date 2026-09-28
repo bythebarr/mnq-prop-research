@@ -1,0 +1,54 @@
+# --- Python / tooling ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+.ipynb_checkpoints/
+
+# --- Secrets (none should ever exist in this project, but be safe) ---
+.env
+.env.*
+*.key
+*.pem
+secrets*
+
+# --- Market data: NEVER commit raw, interim, processed or synthetic data ---
+# Everything under data/ is ignored except the .gitkeep placeholders.
+data/**
+!data/
+!data/*/
+!data/*/.gitkeep
+
+# Data file formats are ignored anywhere in the repo, as a second safety net.
+*.parquet
+*.feather
+*.arrow
+*.h5
+*.hdf5
+*.dbn
+*.dbn.zst
+*.scid
+
+# --- Generated outputs ---
+# Figures and reports are regenerated from code, so they are not committed.
+outputs/figures/*
+!outputs/figures/.gitkeep
+outputs/reports/*
+!outputs/reports/.gitkeep
+# outputs/experiments/ IS tracked on purpose: the experiment registry
+# (registry.jsonl) is the audit trail that stops rules being changed quietly
+# after results are seen. Large generated files inside it are still ignored.
+outputs/experiments/**/*.csv
+outputs/experiments/**/*.png
+
+# --- OS / editor clutter ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

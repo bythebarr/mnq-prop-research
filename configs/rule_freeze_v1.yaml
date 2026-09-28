@@ -1,0 +1,272 @@
+# =============================================================================
+#  RULE FREEZE v1  --  STATUS: DRAFT_NON_EXECUTABLE
+# =============================================================================
+#  THIS FILE IS A BLANK TEMPLATE. IT CONTAINS NO ACCEPTED TRADING RULES.
+#
+#  * Every `TBD` or `null` is an unanswered question, NOT a default.
+#  * The software refuses to treat this file as executable until:
+#      1. every required field has an explicit answer,
+#      2. specification.status is FROZEN_APPROVED, and
+#      3. approval_record is complete and its approved_spec_hash matches
+#         the content of this file (run: `uv run mnq rules check`).
+#  * Plain-English explanations of every field are in docs/RULE_FREEZE_GUIDE.md.
+#  * Write clock times in quotes, e.g. "09:30". Write "NONE" or
+#    "NOT_APPLICABLE" when a field deliberately does not apply; never leave it
+#    empty.
+#  * The list of required fields lives in src/mnq_research/validation.py, so
+#    deleting a field from this file does NOT make it pass validation.
+# =============================================================================
+
+specification:
+  spec_id: MNQ-RULE-FREEZE
+  version: "1.0-draft"
+  status: DRAFT_NON_EXECUTABLE   # allowed: DRAFT_NON_EXECUTABLE | FROZEN_APPROVED
+  strategy_name: TBD
+  author: TBD
+  plain_english_summary: TBD
+
+# --- Instrument and contract selection ---------------------------------------
+instrument:
+  root_symbol: MNQ               # stated in the project brief
+  exchange: TBD
+  tick_size_points: TBD
+  tick_value_usd: TBD
+  point_value_usd: TBD
+  contract_selection_method: TBD
+
+# --- Contract-roll method ------------------------------------------------------
+contract_roll:
+  roll_trigger: TBD
+  roll_timing: TBD
+  price_series_adjustment: TBD
+  open_position_at_roll: TBD
+
+# --- Source data and required fields ------------------------------------------
+source_data:
+  vendor: TBD
+  dataset_name: TBD
+  base_bar_interval: 1min        # fixed by docs/DATA_CONTRACT.md
+  vendor_timestamp_convention: TBD
+  vendor_timezone: TBD
+  history_start_date: TBD
+  history_end_date: TBD
+  higher_resolution_data_available: TBD
+  required_fields:               # fixed by docs/DATA_CONTRACT.md
+    - timestamp_utc
+    - timestamp_exchange
+    - trading_date
+    - contract
+    - open
+    - high
+    - low
+    - close
+    - volume
+    - source
+    - source_timezone
+    - ingestion_timestamp_utc
+
+# --- Time-zone policy ------------------------------------------------------------
+timezone_policy:
+  storage_timezone: UTC                 # fixed by docs/DATA_CONTRACT.md
+  exchange_timezone: America/Chicago    # CME local time; fixed by docs/DATA_CONTRACT.md
+  rule_timezone: TBD
+  dst_handling: TBD
+
+# --- Session definitions -----------------------------------------------------------
+sessions:
+  trading_window_start: TBD
+  trading_window_end: TBD
+  reference_windows: TBD
+  early_close_handling: TBD
+
+# --- Decision-clock timing ------------------------------------------------------------
+decision_clock:
+  decision_bar_interval: TBD
+  decision_point: TBD
+  signal_to_order_delay: TBD
+
+# --- Eligible trading dates ---------------------------------------------------------------
+eligible_trading_dates:
+  allowed_weekdays: TBD
+  holiday_and_half_day_policy: TBD
+  roll_week_policy: TBD
+  calendar_source: TBD
+
+# --- News-event policy ----------------------------------------------------------------------
+news_events:
+  policy: TBD
+  event_types: TBD
+  blackout_minutes_before: TBD
+  blackout_minutes_after: TBD
+  open_position_during_event: TBD
+  calendar_source: TBD
+
+# --- Setup definition -----------------------------------------------------------------------------
+setup:
+  definition: TBD
+  preconditions: TBD
+  setup_expiry: TBD
+
+# --- Direction rules ----------------------------------------------------------------------------------
+direction:
+  long_conditions: TBD
+  short_conditions: TBD
+  conflict_resolution: TBD
+
+# --- Structural level definitions -------------------------------------------------------------------------
+structural_levels:
+  level_types: TBD
+  calculation_method: TBD
+  level_expiry: TBD
+  level_proximity_tolerance: TBD
+
+# --- Acceptance, rejection and breakout definitions ---------------------------------------------------------
+acceptance_rejection_breakout:
+  measurement_basis: TBD
+  acceptance_definition: TBD
+  rejection_definition: TBD
+  breakout_definition: TBD
+
+# --- EMA (only if later approved) ----------------------------------------------------------------------------
+# If `included` is false, the other EMA fields are not required.
+ema:
+  included: TBD
+  period: TBD
+  price_source: TBD
+  bar_interval: TBD
+  seed_method: TBD
+  warmup_bars: TBD
+  session_reset: TBD
+  role_in_rules: TBD
+
+# --- VWAP (only if later approved) --------------------------------------------------------------------------
+# If `included` is false, the other VWAP fields are not required.
+vwap:
+  included: TBD
+  anchor: TBD
+  price_source: TBD
+  volume_source: TBD
+  bands: TBD
+  role_in_rules: TBD
+
+# --- Entry trigger ------------------------------------------------------------------------------------------------
+entry_trigger:
+  long_trigger: TBD
+  short_trigger: TBD
+
+# --- Order type ----------------------------------------------------------------------------------------------------
+order_type:
+  entry_order_type: TBD
+  entry_price_rule: TBD
+
+# --- Order validity and cancellation -------------------------------------------------------------------------------
+order_validity:
+  time_in_force: TBD
+  cancellation_conditions: TBD
+
+# --- Structural invalidation ------------------------------------------------------------------------------------------
+structural_invalidation:
+  definition: TBD
+  action: TBD
+
+# --- Stop placement ----------------------------------------------------------------------------------------------------
+stop_placement:
+  method: TBD
+  buffer_ticks: TBD
+  minimum_stop_points: TBD
+  maximum_stop_points: TBD
+  trade_skipped_if_outside_limits: TBD
+
+# --- Target placement ---------------------------------------------------------------------------------------------------
+target_placement:
+  method: TBD
+  parameters: TBD
+
+# --- Position management ---------------------------------------------------------------------------------------------------
+position_management:
+  contracts_per_trade: TBD
+  sizing_method: TBD
+  scaling_in_out: TBD
+  breakeven_rule: TBD
+  trailing_stop_rule: TBD
+  time_based_exit: TBD
+
+# --- Maximum trades per day -------------------------------------------------------------------------------------------------
+daily_limits:
+  max_trades_per_day: TBD
+  max_losing_trades_per_day: TBD
+  daily_loss_stop_usd: TBD
+
+# --- Re-entry policy ------------------------------------------------------------------------------------------------------------
+reentry:
+  allowed: TBD
+  conditions: TBD
+  cooldown_minutes: TBD
+
+# --- Session flattening ---------------------------------------------------------------------------------------------------------
+session_flattening:
+  no_new_entries_after: TBD
+  flatten_all_by: TBD
+  flatten_order_type: TBD
+
+# --- Same-bar (intrabar) ambiguity ----------------------------------------------------------------------------------------------
+# A one-minute OHLC bar does not reveal whether its high or low came first.
+# See docs/DATA_CONTRACT.md section "Intrabar ambiguity".
+intrabar_ambiguity:
+  stop_and_target_same_bar: TBD
+  entry_and_exit_same_bar: TBD
+  resolution_with_finer_data: TBD
+
+# --- Missing-data behaviour ------------------------------------------------------------------------------------------------------
+missing_data:
+  policy: TBD
+  max_tolerated_gap_minutes: TBD
+  open_position_during_gap: TBD
+
+# --- Bad-data behaviour ------------------------------------------------------------------------------------------------------------
+bad_data:
+  policy: TBD
+  handling_of_rejected_bars: TBD
+
+# --- Commission assumptions ----------------------------------------------------------------------------------------------------------
+commissions:
+  round_turn_per_contract_usd: TBD
+  includes_exchange_clearing_nfa_fees: TBD
+  source_and_date: TBD
+
+# --- Slippage assumptions -------------------------------------------------------------------------------------------------------------
+slippage:
+  entry_ticks: TBD
+  stop_exit_ticks: TBD
+  target_exit_ticks: TBD
+  market_exit_ticks: TBD
+  stress_test_multipliers: TBD
+
+# --- Prop-account rule version ----------------------------------------------------------------------------------------------------------
+prop_account_rules:
+  firm: TBD
+  program_name: TBD
+  rules_document_version: TBD
+  rules_retrieved_date: TBD
+  account_size_usd: TBD
+  profit_target_usd: TBD
+  max_loss_limit_usd: TBD
+  drawdown_type: TBD
+  daily_loss_limit_usd: TBD
+  max_contracts: TBD
+  consistency_rule: TBD
+  minimum_trading_days: TBD
+  payout_rules: TBD
+  trading_restrictions: TBD
+
+# --- Approval record --------------------------------------------------------------------------------------------------------------------
+# Filled in ONLY when every question above is answered and you approve the
+# complete specification. approved_spec_hash is printed by
+# `uv run mnq rules check` and ties the approval to this exact content:
+# any later edit breaks the match and blocks execution again.
+approval_record:
+  approved: false
+  approved_by: null
+  approved_at_utc: null
+  approved_spec_hash: null
+  approval_notes: null
