@@ -21,9 +21,35 @@ specification:
   spec_id: MNQ-RULE-FREEZE
   version: "1.0-draft"
   status: DRAFT_NON_EXECUTABLE   # allowed: DRAFT_NON_EXECUTABLE | FROZEN_APPROVED
-  strategy_name: TBD
-  author: TBD
-  plain_english_summary: TBD
+  strategy_name: "MNQ Objective Structure Continuation — Baseline 0 (MNQ-OSC-B0)"
+  author: Sam Barr               # accountable rule owner
+  # Recorded verbatim from the rule owner (Round 1, 2026-09-28). This is the
+  # reference description only: it is NOT executable logic. Every judgement
+  # word in it is tracked in docs/RULE_FREEZE_OPEN_TERMS.md until it has an
+  # exact definition in the fields below.
+  plain_english_summary: >
+    The strategy waits until the opening volatility has had time to develop
+    and the market presents a clear, objectively measurable
+    structure-continuation opportunity around meaningful price levels. It
+    trades only when price demonstrates defined acceptance beyond a
+    structural level, followed by sufficient confirmation that continuation
+    is more likely than immediate rejection, with adequate unobstructed room
+    toward the next meaningful level. Direction is chosen from the developing
+    market structure: longs require bullish structural progression and
+    acceptance above the relevant level, while shorts require bearish
+    structural progression and acceptance below it. The strategy enters
+    through a predefined order method after the confirmation trigger, places
+    its stop at the structural invalidation point rather than using an
+    arbitrary fixed distance, and sizes the MNQ position from that stop
+    distance and the permitted account risk. It exits at a predefined target
+    located conservatively before the next meaningful opposing level, at
+    structural invalidation, or at a mandatory session-closing time. It takes
+    no trade when conditions are unclear, data are incomplete, execution
+    assumptions are unsafe, or required risk constraints cannot be satisfied.
+    The exact opening delay, eligible session, structural-level definitions,
+    acceptance criteria, confirmation trigger, entry order, target method,
+    maximum trades, news restrictions, daily loss limit and daily shutdown
+    conditions remain to be defined during Rule Freeze v1.0.
 
 # --- Instrument and contract selection ---------------------------------------
 instrument:
