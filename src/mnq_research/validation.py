@@ -106,11 +106,25 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "structural_levels.calculation_method",
     "structural_levels.level_expiry",
     "structural_levels.level_proximity_tolerance",
+    # Market structure
+    "market_structure.structure_bar_interval",
+    "market_structure.swing_point_definition",
+    "market_structure.bullish_progression_definition",
+    "market_structure.bearish_progression_definition",
+    "market_structure.mixed_structure_handling",
     # Acceptance / rejection / breakout
     "acceptance_rejection_breakout.measurement_basis",
     "acceptance_rejection_breakout.acceptance_definition",
     "acceptance_rejection_breakout.rejection_definition",
     "acceptance_rejection_breakout.breakout_definition",
+    # Confirmation
+    "confirmation.definition",
+    "confirmation.max_bars_after_acceptance",
+    "confirmation.failure_handling",
+    # Room to target
+    "room_to_target.measurement_method",
+    "room_to_target.minimum_room",
+    "room_to_target.obstruction_definition",
     # EMA (dependent fields only required if ema.included is true)
     "ema.included",
     "ema.period",
@@ -151,10 +165,17 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "position_management.breakeven_rule",
     "position_management.trailing_stop_rule",
     "position_management.time_based_exit",
+    "position_management.risk_per_trade",
+    "position_management.risk_reference_balance",
+    "position_management.contract_rounding",
+    "position_management.below_one_contract_action",
+    "position_management.max_contracts_per_trade",
     # Daily limits and re-entry
     "daily_limits.max_trades_per_day",
     "daily_limits.max_losing_trades_per_day",
     "daily_limits.daily_loss_stop_usd",
+    "no_trade_conditions.execution_safety_conditions",
+    "no_trade_conditions.risk_constraint_conditions",
     "reentry.allowed",
     "reentry.conditions",
     "reentry.cooldown_minutes",

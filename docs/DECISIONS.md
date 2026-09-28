@@ -177,3 +177,15 @@ stops.
 **Why:** These three limits interact, and they sit next to the prop firm's
 daily limits.
 **Reversible:** yes.
+
+## D-018 — Five sections added to the rule-freeze template (Round 2)
+**Decision:** At the rule owner's request (2026-09-28), five sets of required
+questions were added: `market_structure`, `confirmation`, `room_to_target`,
+extra risk-sizing fields in `position_management`, and `no_trade_conditions`.
+All start as `TBD`. No values were added.
+**Why:** The owner's plain-English summary depends on these concepts
+(structural progression, confirmation, room to the next level, risk-based
+sizing, and no-trade conditions), and the original template had nowhere to
+define them. As required fields, they cannot be forgotten.
+**Reversible:** yes, by the rule owner.
+**Status:** CONFIRMED by the project owner on 2026-09-28.

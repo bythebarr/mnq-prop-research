@@ -146,12 +146,26 @@ structural_levels:
   level_expiry: TBD
   level_proximity_tolerance: TBD
 
+# --- Market structure (added Round 2) -------------------------------------------------------------------
+market_structure:
+  structure_bar_interval: TBD
+  swing_point_definition: TBD
+  bullish_progression_definition: TBD
+  bearish_progression_definition: TBD
+  mixed_structure_handling: TBD
+
 # --- Acceptance, rejection and breakout definitions ---------------------------------------------------------
 acceptance_rejection_breakout:
   measurement_basis: TBD
   acceptance_definition: TBD
   rejection_definition: TBD
   breakout_definition: TBD
+
+# --- Confirmation (added Round 2) ------------------------------------------------------------------------
+confirmation:
+  definition: TBD
+  max_bars_after_acceptance: TBD
+  failure_handling: TBD
 
 # --- EMA (only if later approved) ----------------------------------------------------------------------------
 # If `included` is false, the other EMA fields are not required.
@@ -174,6 +188,12 @@ vwap:
   volume_source: TBD
   bands: TBD
   role_in_rules: TBD
+
+# --- Room to target (added Round 2) -----------------------------------------------------------------------
+room_to_target:
+  measurement_method: TBD
+  minimum_room: TBD
+  obstruction_definition: TBD
 
 # --- Entry trigger ------------------------------------------------------------------------------------------------
 entry_trigger:
@@ -216,12 +236,22 @@ position_management:
   breakeven_rule: TBD
   trailing_stop_rule: TBD
   time_based_exit: TBD
+  risk_per_trade: TBD
+  risk_reference_balance: TBD
+  contract_rounding: TBD
+  below_one_contract_action: TBD
+  max_contracts_per_trade: TBD
 
 # --- Maximum trades per day -------------------------------------------------------------------------------------------------
 daily_limits:
   max_trades_per_day: TBD
   max_losing_trades_per_day: TBD
   daily_loss_stop_usd: TBD
+
+# --- No-trade conditions (added Round 2) -------------------------------------------------------------------
+no_trade_conditions:
+  execution_safety_conditions: TBD
+  risk_constraint_conditions: TBD
 
 # --- Re-entry policy ------------------------------------------------------------------------------------------------------------
 reentry:

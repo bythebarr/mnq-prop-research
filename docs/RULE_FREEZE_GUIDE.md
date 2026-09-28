@@ -296,6 +296,42 @@ first breakout, whichever comes first."
 level? Give the answer in ticks or points.
 **Illustrative only:** "Within 2 ticks."
 
+### `market_structure.structure_bar_interval`
+*(Added in Round 2 for "developing market structure" in the summary.)*
+**Question:** Which bar length is market structure judged on?
+**Why it matters:** Swings on one-minute bars and on 15-minute bars are
+different structures. The same market can be "bullish" on one and "mixed"
+on the other.
+**Illustrative only:** `"5min"`.
+
+### `market_structure.swing_point_definition`
+**Question:** What exactly is a swing high and a swing low? For example, a
+bar whose high is higher than the highs of N bars on each side. Give N. Say
+whether ties count. Say when a swing becomes *known*.
+**Why it matters:** A swing that needs N bars *after* it to be confirmed is
+only known N bars later. Using it earlier is look-ahead bias.
+**Illustrative only:** "A swing high is a bar whose high exceeds the highs
+of the 2 bars before and 2 bars after it. It is known only when the second
+later bar closes."
+
+### `market_structure.bullish_progression_definition`
+**Question:** Exactly which sequence of swings counts as bullish structural
+progression?
+**Illustrative only:** "The last two confirmed swing highs are ascending
+*and* the last two confirmed swing lows are ascending."
+
+### `market_structure.bearish_progression_definition`
+**Question:** Exactly which sequence of swings counts as bearish structural
+progression?
+**Illustrative only:** "The last two confirmed swing highs are descending
+*and* the last two confirmed swing lows are descending."
+
+### `market_structure.mixed_structure_handling`
+**Question:** What happens when structure is neither bullish nor bearish
+under the definitions above? And what if there aren't yet enough swings
+today?
+**Illustrative only:** "No trade."
+
 ### `acceptance_rejection_breakout.measurement_basis`
 **Question:** Are acceptance, rejection and breakout judged on closes,
 highs/lows (wicks), or both? Measured on which bar interval?
@@ -316,6 +352,27 @@ original side by at least 2 ticks."
 from acceptance?
 **Illustrative only:** "One decision-bar close at least 4 ticks beyond the
 level."
+
+### `confirmation.definition`
+*(Added in Round 2 for "sufficient confirmation that continuation is more
+likely than immediate rejection".)*
+**Question:** After acceptance, what exact, observable event counts as
+confirmation? It must be something visible in the bars at that moment. The
+backtest cannot compute "more likely".
+**Illustrative only:** "The next decision bar closes further beyond the
+level than the acceptance bar did, and its low stays beyond the level."
+
+### `confirmation.max_bars_after_acceptance`
+**Question:** Within how many bars after acceptance must confirmation
+happen? After that, the setup is void.
+**Illustrative only:** `3`.
+
+### `confirmation.failure_handling`
+**Question:** What happens if confirmation doesn't come in time, or price
+rejects back through the level first? Does the level become unusable for
+the day, or can a fresh acceptance start again?
+**Illustrative only:** "The setup is void. That level may not be used again
+today."
 
 ### `ema.included`
 **Question:** Is an exponential moving average used in any rule? Answer
@@ -415,6 +472,26 @@ rejection occurs downward."
 **Illustrative only:** "No trade."
 
 ## 10. Entry and orders
+
+### `room_to_target.measurement_method`
+*(Added in Round 2 for "adequate unobstructed room toward the next
+meaningful level".)*
+**Question:** How is "room" measured? From which price (the planned entry,
+or the confirmation close) to which level (the next opposing structural
+level)? In points, or as a multiple of the planned risk?
+**Illustrative only:** "From the planned entry price to the nearest
+opposing level from `structural_levels`, as a multiple of planned risk."
+
+### `room_to_target.minimum_room`
+**Question:** What is the smallest room that allows a trade?
+**Illustrative only:** "1.5 times the planned risk."
+
+### `room_to_target.obstruction_definition`
+**Question:** What counts as an obstruction between the entry and the
+target? For example, any other level type, a prior swing, or a round
+number. Say whether an obstruction cancels the trade or moves the target.
+**Illustrative only:** "Any active structural level or confirmed swing
+point in between. If there is one, the trade is skipped."
 
 ### `entry_trigger.long_trigger`
 **Question:** What exact event places a long entry order?
@@ -518,6 +595,38 @@ when?
 **Question:** Is a trade closed after a maximum holding time?
 **Illustrative only:** "Exit at market after 60 minutes."
 
+### `position_management.risk_per_trade`
+*(Added in Round 2 for "sizes the MNQ position from that stop distance and
+the permitted account risk".)*
+**Question:** How much may one trade lose, including costs? Give it in US
+dollars, or as a percentage of the balance named in the next question.
+**Why it matters:** This is the single most important survival setting
+against the prop firm's drawdown limit.
+**Illustrative only:** `"USD 100"`.
+
+### `position_management.risk_reference_balance`
+**Question:** If risk is a percentage, a percentage of what? Starting
+balance, current balance, or the remaining distance to the drawdown limit?
+If risk is in fixed dollars, answer `NOT_APPLICABLE`.
+**Illustrative only:** "Remaining distance to the max-loss limit."
+
+### `position_management.contract_rounding`
+**Question:** How is the computed number of contracts turned into a whole
+number?
+**Why it matters:** Rounding up can exceed the permitted risk.
+**Illustrative only:** "Always round down: floor(risk ÷ (stop distance ×
+$ per point + costs per contract))."
+
+### `position_management.below_one_contract_action`
+**Question:** What happens if even one contract would risk more than the
+permitted amount?
+**Illustrative only:** "Skip the trade."
+
+### `position_management.max_contracts_per_trade`
+**Question:** What is the hard cap on contracts in one trade, whatever the
+sizing formula says? It must not exceed the prop firm's limit.
+**Illustrative only:** `5`.
+
 ## 12. Daily limits, re-entry and flattening
 
 ### `daily_limits.max_trades_per_day`
@@ -535,6 +644,23 @@ day?
 costs, does trading stop for the day? This must sit comfortably inside the
 prop firm's own daily limit.
 **Illustrative only:** `300`.
+
+### `no_trade_conditions.execution_safety_conditions`
+*(Added in Round 2 for "execution assumptions are unsafe".)*
+**Question:** Give the complete, finite list of measurable conditions under
+which a trade must not be taken because fills can't be simulated honestly.
+Anything not on the list is not a reason to skip.
+**Illustrative only:** "(a) The stop and target would both be inside the
+entry bar's range. (b) The entry bar's range exceeds 40 points. (c) Less
+than 10 minutes before the flatten time."
+
+### `no_trade_conditions.risk_constraint_conditions`
+**Question:** Give the complete, finite list of risk conditions that block
+a trade.
+**Illustrative only:** "(a) The planned loss would breach
+`daily_limits.daily_loss_stop_usd`. (b) The planned loss would bring the
+account within $200 of the prop max-loss limit. (c) The contract count
+would exceed any cap."
 
 ### `reentry.allowed`
 **Question:** After an exit, may the strategy trade the **same** level or

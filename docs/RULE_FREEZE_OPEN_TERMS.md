@@ -8,7 +8,8 @@ owed by the rule owner.
 Status values: `OPEN` (no definition yet) · `DEFINED` (answered in the named
 field) · `DROPPED` (the owner removed the concept).
 
-Source: Round 1 summary, recorded 2026-09-28.
+Source: Round 1 summary, recorded 2026-09-28. The fields for T7, T8, T9,
+T12, T16 and T17 were added to the template in Round 2 at the owner's request.
 
 | # | Phrase in the summary | What must be defined | Where it will live | Status |
 |---|---|---|---|---|
@@ -18,14 +19,14 @@ Source: Round 1 summary, recorded 2026-09-28.
 | T4 | "objectively measurable structure-continuation opportunity" | The complete, measurable setup condition | `setup.definition` | OPEN |
 | T5 | "meaningful price levels" / "structural level" / "relevant level" | Which level types; exact formulas; which level applies when several are nearby | `structural_levels.*` | OPEN |
 | T6 | "defined acceptance beyond a structural level" | Bars, closes versus wicks, tick distance and count | `acceptance_rejection_breakout.acceptance_definition` | OPEN |
-| T7 | "sufficient confirmation that continuation is more likely than immediate rejection" | A concrete event. "More likely" cannot be computed live, so this must be an observable rule | *proposed new field* `confirmation.*` | OPEN |
-| T8 | "adequate unobstructed room toward the next meaningful level" | Minimum room (points or multiple of risk), and what counts as an obstruction | *proposed new field* `room_to_target.*` | OPEN |
-| T9 | "developing market structure" / "bullish / bearish structural progression" | Swing-point definition and exact higher-high/higher-low (or equivalent) test | *proposed new field* `market_structure.*`; `direction.*` | OPEN |
+| T7 | "sufficient confirmation that continuation is more likely than immediate rejection" | A concrete event. "More likely" cannot be computed live, so this must be an observable rule | `confirmation.*` | OPEN |
+| T8 | "adequate unobstructed room toward the next meaningful level" | Minimum room (points or multiple of risk), and what counts as an obstruction | `room_to_target.*` | OPEN |
+| T9 | "developing market structure" / "bullish / bearish structural progression" | Swing-point definition and exact higher-high/higher-low (or equivalent) test | `market_structure.*`, `direction.*` | OPEN |
 | T10 | "predefined order method" | Order type and price | `order_type.*`, `order_validity.*` | OPEN |
 | T11 | "structural invalidation point" | Exact price that invalidates the idea; whether the stop sits exactly there or with a buffer | `structural_invalidation.definition`, `stop_placement.*` | OPEN |
-| T12 | "permitted account risk" | Risk per trade (US dollars or % of what balance); contract rounding; behaviour when even 1 contract exceeds it | *proposed new fields* in `position_management` | OPEN |
+| T12 | "permitted account risk" | Risk per trade (US dollars or % of what balance); contract rounding; behaviour when even 1 contract exceeds it | `position_management.risk_per_trade` and related | OPEN |
 | T13 | "conservatively before the next meaningful opposing level" | Which level counts as "opposing" and how far before it the target sits | `target_placement.*` | OPEN |
 | T14 | "mandatory session-closing time" | Exact flatten time and order type | `session_flattening.*` | OPEN |
 | T15 | "data are incomplete" | Link to the data policy | `missing_data.*`, `bad_data.*` | OPEN |
-| T16 | "execution assumptions are unsafe" | A finite list of measurable conditions, or drop the phrase | *proposed new field* `no_trade_conditions.*` | OPEN |
-| T17 | "required risk constraints cannot be satisfied" | A finite list, e.g. risk per contract, remaining daily loss, prop limits | *proposed new field* `no_trade_conditions.*` | OPEN |
+| T16 | "execution assumptions are unsafe" | A finite list of measurable conditions, or drop the phrase | `no_trade_conditions.*` | OPEN |
+| T17 | "required risk constraints cannot be satisfied" | A finite list, e.g. risk per contract, remaining daily loss, prop limits | `no_trade_conditions.*` | OPEN |
