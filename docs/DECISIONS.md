@@ -333,5 +333,49 @@ Open questions found while testing (the literal rules are implemented):
 3. **New attempt:** after a rejection window expires with price still in
    the zone, a later touch opens a new attempt.
 **Reversible:** yes.
-**Status:** Rules CONFIRMED (Round 9). Implementation choices and
-questions 1–3 PENDING owner decision.
+**Status:** CONFIRMED by the project owner on 2026-09-28 and amended by
+the Round 9 gap resolution (D-025). Blackout reset and missing-bar treatment
+are confirmed, and both remove all executable state. The gap definition was
+confirmed with stronger clear-side thresholds. The two-sided breach choice
+was changed to record only the active episode's direction. Questions 1–3
+are resolved by directional arming and episodes (D-025).
+
+## D-025 — Directional arming and interaction episodes (Round 9 gap resolution)
+**Decision:** The zone tracker was rewritten around the owner's
+directional-episode model:
+- Clear-side closes **arm** a zone.
+- Only a **later** bar's approach, touch or qualifying gap starts an
+  attempt, and each attempt gets a new id.
+- Breaches and acceptance count only in the attempt's direction.
+- A new attempt needs a **fresh arm**.
+- The rejection window limits rejection only, so delayed acceptance is
+  possible.
+- Interruptions and blackouts remove all executable state but keep the
+  history.
+
+A new required field `level_states.directional_episodes` holds the rules,
+and `docs/LEVEL_STATES.md` was rewritten.
+
+The tests now cover the 18 amendment items and the original Round 9 list
+(36 level-state tests). Mutation checks confirmed that the tests catch
+arming not being consumed, non-directional breaches, a missing rearm after
+expiry, and same-bar arm-and-start. Loosening the gap-origin threshold is
+**not observable**: under B0, a close within 0.50 below L comes from a bar
+whose high is within the approach distance (at least 2 points), so that bar
+has already started an episode. The threshold is therefore implied by the
+arming rule.
+
+**Interpretations pending owner confirmation:**
+1. **Arming only while no episode is active.** Taken literally, the first
+   acceptance close of an upward attempt (≥ U + 0.50) also arms from above.
+   Any following bar that approaches from above would then start a downward
+   episode and end the upward one, making two-close acceptance nearly
+   impossible. As implemented, active attempts never arm the opposite side.
+   Consequence: the end condition "an opposite episode is validly armed and
+   begins" cannot occur under B0.
+2. **Approach-started episodes** open their rejection window at the first
+   touch, breach or gap. Until then, a clear-side close on the origin side
+   neither rejects nor ends the episode.
+**Reversible:** yes.
+**Status:** Model CONFIRMED by the owner (Round 9 gap resolution).
+Interpretations 1–2 PENDING.

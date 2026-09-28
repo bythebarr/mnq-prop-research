@@ -1,12 +1,20 @@
-"""Zone interaction states for Baseline B0 (Rule Freeze Round 9).
+"""Zone interaction states for Baseline B0 (Rule Freeze Round 9, as amended).
 
 COMPONENT OF A DRAFT SPECIFICATION. Implements only the Round 9 rules in
-``acceptance_rejection_breakout`` and ``level_states``: approach, touch,
-breach, acceptance and rejection of structural zones, plus zone
-initialisation at 09:30 / 09:45. It contains NO confirmation, entry, stop,
-target or sizing logic and is not connected to any backtest.
+``acceptance_rejection_breakout`` and ``level_states`` (including the
+directional-episode amendment): location, directional arming, interaction
+episodes, touch, directional breach, acceptance and rejection of structural
+zones, plus zone initialisation at 09:30 / 09:45. It contains NO
+confirmation, entry, stop, target or sizing logic and is not connected to
+any backtest.
 
 Plain-English description: docs/LEVEL_STATES.md.
+
+Core idea (owner, Round 9 amendment): being above or below a zone is
+*location*, not breach or acceptance. A zone must first be *armed* by a
+clear-side close, and only a LATER bar can begin a directional *interaction
+episode*. Breaches and acceptance count only inside an episode, and only in
+its direction.
 
 Rules of the implementation:
 
@@ -14,7 +22,8 @@ Rules of the implementation:
   module deliberately contains no numeric trading constants (a test checks
   this).
 * Only completed, eligible five-minute decision bars cause transitions.
-  Incomplete bars, missing bars and news blackouts interrupt sequences.
+  Incomplete bars, missing bars and news blackouts remove all executable
+  state (arming, episode, counters) but never history.
 * History is append-only. ``current_state`` is a summary chosen by the
   frozen precedence; no event is ever erased.
 """
@@ -45,6 +54,8 @@ OPENING_RANGE_TYPES = frozenset({LevelType.OPENING_RANGE_HIGH, LevelType.OPENING
 
 class ZoneState(str, Enum):
     UNTOUCHED = "UNTOUCHED"
+    ARMED_FROM_BELOW = "ARMED_FROM_BELOW"
+    ARMED_FROM_ABOVE = "ARMED_FROM_ABOVE"
     APPROACHED = "APPROACHED"
     TOUCHED = "TOUCHED"
     BREACHED_ABOVE = "BREACHED_ABOVE"
@@ -59,6 +70,10 @@ class ZoneState(str, Enum):
 class ZoneEventType(str, Enum):
     ZONE_INITIALIZED = "ZONE_INITIALIZED"
     ZONE_SUPERSEDED = "ZONE_SUPERSEDED"
+    ARMED_FROM_BELOW = "ARMED_FROM_BELOW"
+    ARMED_FROM_ABOVE = "ARMED_FROM_ABOVE"
+    ATTEMPT_STARTED = "ATTEMPT_STARTED"
+    ATTEMPT_ENDED = "ATTEMPT_ENDED"
     APPROACHED_FROM_BELOW = "APPROACHED_FROM_BELOW"
     APPROACHED_FROM_ABOVE = "APPROACHED_FROM_ABOVE"
     TOUCH_FROM_BELOW = "TOUCH_FROM_BELOW"
@@ -92,7 +107,30 @@ class Origin(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
-# current_state precedence when one bar satisfies several events (highest first).
+class Direction(str, Enum):
+    UPWARD = "UPWARD"
+    DOWNWARD = "DOWNWARD"
+
+
+class AttemptStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+    ENDED_REARMED_ON_ORIGIN_SIDE = "ENDED_REARMED_ON_ORIGIN_SIDE"
+    ENDED_INTERRUPTION = "ENDED_INTERRUPTION"
+    ENDED_BLACKOUT = "ENDED_BLACKOUT"
+    ENDED_TRADING_WINDOW = "ENDED_TRADING_WINDOW"
+    ENDED_ZONE_EXPIRED = "ENDED_ZONE_EXPIRED"
+
+
+class WindowStatus(str, Enum):
+    NOT_OPENED = "NOT_OPENED"  # episode began by approach; no touch/breach/gap yet
+    OPEN = "OPEN"
+    EXPIRED = "EXPIRED"
+    CLOSED = "CLOSED"
+
+
+# current_state precedence among events valid in the same bar (highest first).
 _STATE_PRECEDENCE: tuple[tuple[ZoneEventType, ZoneState], ...] = (
     (ZoneEventType.ACCEPTED_ABOVE, ZoneState.ACCEPTED_ABOVE),
     (ZoneEventType.ACCEPTED_BELOW, ZoneState.ACCEPTED_BELOW),
@@ -106,6 +144,8 @@ _STATE_PRECEDENCE: tuple[tuple[ZoneEventType, ZoneState], ...] = (
     (ZoneEventType.TOUCH_ORIGIN_UNKNOWN, ZoneState.TOUCHED),
     (ZoneEventType.APPROACHED_FROM_BELOW, ZoneState.APPROACHED),
     (ZoneEventType.APPROACHED_FROM_ABOVE, ZoneState.APPROACHED),
+    (ZoneEventType.ARMED_FROM_BELOW, ZoneState.ARMED_FROM_BELOW),
+    (ZoneEventType.ARMED_FROM_ABOVE, ZoneState.ARMED_FROM_ABOVE),
 )
 
 
@@ -146,7 +186,8 @@ class StateParams:
         return self.acceptance_distance_ticks * TICK
 
     @property
-    def rejection_points(self) -> Decimal:
+    def clear_side_points(self) -> Decimal:
+        """Also the rejection close distance (owner: clear_side_distance)."""
         return self.rejection_close_distance_ticks * TICK
 
 
@@ -169,13 +210,24 @@ class ZoneEvent:
     event: ZoneEventType
     initialization_replay: bool = False
     detail: str = ""
+    attempt_id: int | None = None
 
 
 @dataclass
-class _RejectionWindow:
-    direction: str  # "UP" or "DOWN"
-    opened_at_utc: pd.Timestamp
-    bars_elapsed: int
+class Attempt:
+    """One directional interaction episode."""
+
+    attempt_id: int
+    direction: Direction
+    origin: Origin
+    start_timestamp_utc: pd.Timestamp
+    armed_timestamp_utc: pd.Timestamp
+    armed_close: Decimal
+    status: AttemptStatus = AttemptStatus.ACTIVE
+    window_status: WindowStatus = WindowStatus.NOT_OPENED
+    window_bars_elapsed: int = 0
+    acceptance_count: int = 0
+    end_timestamp_utc: pd.Timestamp | None = None
 
 
 def _d(value: float) -> Decimal:
@@ -202,11 +254,13 @@ class ZoneTracker:
         self.predecessor_cluster_ids = predecessor_cluster_ids
         self.parent_constituent_types = cluster.constituent_level_types
         self.superseded_by: str | None = None
+        self.attempts: list[Attempt] = []
         self._history: list[ZoneEvent] = [ZoneEvent(initialized_at_utc, ZoneEventType.ZONE_INITIALIZED)]
-        self._fresh_state()
         self._last_bar_end: pd.Timestamp = initialized_at_utc
         self._in_blackout = False
+        self.first_interaction_timestamp: pd.Timestamp | None = None
         self.most_recent_transition_timestamp: pd.Timestamp | None = None
+        self._clear_executable_state()
 
     # -- public read-only views ------------------------------------------------
     @property
@@ -226,52 +280,89 @@ class ZoneTracker:
         return tuple(self._history)
 
     @property
-    def active_rejection_window(self) -> _RejectionWindow | None:
-        return self._window
+    def active_attempt(self) -> Attempt | None:
+        return self._attempt
+
+    @property
+    def active_attempt_direction(self) -> Direction | None:
+        return self._attempt.direction if self._attempt else None
+
+    @property
+    def attempt_id(self) -> int | None:
+        return self._attempt.attempt_id if self._attempt else None
+
+    @property
+    def attempt_start_timestamp(self) -> pd.Timestamp | None:
+        return self._attempt.start_timestamp_utc if self._attempt else None
+
+    @property
+    def attempt_status(self) -> AttemptStatus | None:
+        return self.attempts[-1].status if self.attempts else None
+
+    @property
+    def active_rejection_window(self) -> bool:
+        return self._attempt is not None and self._attempt.window_status is WindowStatus.OPEN
+
+    @property
+    def interaction_origin(self) -> Origin:
+        return self._attempt.origin if self._attempt else Origin.UNKNOWN
+
+    @property
+    def consecutive_acceptance_closes_above(self) -> int:
+        return self._attempt.acceptance_count if self.active_attempt_direction is Direction.UPWARD else 0
+
+    @property
+    def consecutive_acceptance_closes_below(self) -> int:
+        return self._attempt.acceptance_count if self.active_attempt_direction is Direction.DOWNWARD else 0
 
     def events(self, event: ZoneEventType) -> list[ZoneEvent]:
         return [e for e in self._history if e.event is event]
 
-    # -- state helpers -----------------------------------------------------------
-    def _fresh_state(self) -> None:
+    # -- executable state ---------------------------------------------------------
+    def _clear_executable_state(self) -> None:
         self.current_state = ZoneState.UNTOUCHED
         self.current_price_relation: PriceRelation | None = None
-        self.interaction_origin = Origin.UNKNOWN
-        self.first_interaction_timestamp: pd.Timestamp | None = None
-        self.consecutive_acceptance_closes_above = 0
-        self.consecutive_acceptance_closes_below = 0
-        self._window: _RejectionWindow | None = None
-        self._last_clear_outside: Origin = Origin.UNKNOWN
+        self.armed_side: Origin | None = None
+        self.armed_timestamp: pd.Timestamp | None = None
+        self.armed_close: Decimal | None = None
+        self._attempt: Attempt | None = None
         self._last_close: Decimal | None = None
+
+    def _end_attempt(self, when: pd.Timestamp, status: AttemptStatus, replay: bool) -> list[ZoneEvent]:
+        attempt = self._attempt
+        if attempt is None:
+            return []
+        events = []
+        if attempt.window_status is WindowStatus.OPEN and status is not AttemptStatus.REJECTED:
+            events.append(ZoneEvent(when, ZoneEventType.REJECTION_WINDOW_INVALIDATED, replay, status.value, attempt.attempt_id))
+        attempt.window_status = WindowStatus.CLOSED if attempt.window_status is WindowStatus.OPEN else attempt.window_status
+        attempt.status, attempt.end_timestamp_utc = status, when
+        events.append(ZoneEvent(when, ZoneEventType.ATTEMPT_ENDED, replay, status.value, attempt.attempt_id))
+        self._attempt = None
+        return events
+
+    def _reset_all(self, when: pd.Timestamp, status: AttemptStatus, replay: bool) -> list[ZoneEvent]:
+        """Remove all executable state (arming, episode, counters); keep history."""
+        events = self._end_attempt(when, status, replay)
+        self._clear_executable_state()
+        return events
 
     def _record(self, events: list[ZoneEvent]) -> tuple[ZoneEvent, ...]:
         self._history.extend(events)
         return tuple(events)
 
-    def _end_window(self, when: pd.Timestamp, event: ZoneEventType, detail: str, replay: bool) -> list[ZoneEvent]:
-        if self._window is None:
-            return []
-        self._window = None
-        return [ZoneEvent(when, event, replay, detail)]
-
-    def _interrupt(self, when: pd.Timestamp, detail: str, replay: bool) -> list[ZoneEvent]:
-        self.consecutive_acceptance_closes_above = 0
-        self.consecutive_acceptance_closes_below = 0
-        return [ZoneEvent(when, ZoneEventType.DATA_INTERRUPTION, replay, detail)] + self._end_window(
-            when, ZoneEventType.REJECTION_WINDOW_INVALIDATED, detail, replay
-        )
-
     # -- external resets ---------------------------------------------------------
     def reset_for_blackout(self, blackout_start_utc: pd.Timestamp) -> tuple[ZoneEvent, ...]:
-        """News-blackout start: reset counters and pending state; setups must form fresh after."""
-        events = self._end_window(blackout_start_utc, ZoneEventType.REJECTION_WINDOW_INVALIDATED, "NEWS_BLACKOUT", False)
+        events = self._reset_all(blackout_start_utc, AttemptStatus.ENDED_BLACKOUT, False)
         events.append(ZoneEvent(blackout_start_utc, ZoneEventType.BLACKOUT_RESET))
-        self._fresh_state()
         self._in_blackout = True
         return self._record(events)
 
     def end_trading_window(self, when_utc: pd.Timestamp) -> tuple[ZoneEvent, ...]:
-        return self._record(self._end_window(when_utc, ZoneEventType.REJECTION_WINDOW_INVALIDATED, "TRADING_WINDOW_CLOSED", False))
+        return self._record(self._end_attempt(when_utc, AttemptStatus.ENDED_TRADING_WINDOW, False))
+
+    def expire(self, when_utc: pd.Timestamp) -> tuple[ZoneEvent, ...]:
+        return self._record(self._end_attempt(when_utc, AttemptStatus.ENDED_ZONE_EXPIRED, False))
 
     def supersede(self, when_utc: pd.Timestamp, successor_id: str) -> None:
         self.superseded_by = successor_id
@@ -286,7 +377,8 @@ class ZoneTracker:
         replay = initialization_replay
         events: list[ZoneEvent] = []
         if bar.start_utc != self._last_bar_end:
-            events += self._interrupt(bar.start_utc, "MISSING_DECISION_BAR_IN_SEQUENCE", replay)
+            events.append(ZoneEvent(bar.start_utc, ZoneEventType.DATA_INTERRUPTION, replay, "MISSING_DECISION_BAR_IN_SEQUENCE"))
+            events += self._reset_all(bar.start_utc, AttemptStatus.ENDED_INTERRUPTION, replay)
         self._last_bar_end = bar.end_utc
 
         if bar.overlaps_blackout:
@@ -296,7 +388,8 @@ class ZoneTracker:
             return self._record(events)
         self._in_blackout = False
         if not bar.complete:
-            return self._record(events + self._interrupt(bar.end_utc, "INCOMPLETE_DECISION_BAR", replay))
+            events.append(ZoneEvent(bar.end_utc, ZoneEventType.DATA_INTERRUPTION, replay, "INCOMPLETE_DECISION_BAR"))
+            return self._record(events + self._reset_all(bar.end_utc, AttemptStatus.ENDED_INTERRUPTION, replay))
 
         events += self._evaluate(bar, replay)
         return self._record(events)
@@ -307,9 +400,13 @@ class ZoneTracker:
         if high < low or not low <= close <= high:
             raise ZoneStateValidationError(f"{self.zone_id}: impossible OHLC in bar ending {bar.end_utc}")
         p, t = self.params, bar.end_utc
-        flags: list[ZoneEventType] = []
-        details: dict[ZoneEventType, str] = {}
+        clear = p.clear_side_points
+        flags: list[tuple[ZoneEventType, str, int | None]] = []
 
+        def flag(event: ZoneEventType, detail: str = "", attempt_id: int | None = None) -> None:
+            flags.append((event, detail, attempt_id))
+
+        # --- Location and wick geometry (descriptive) -------------------------
         self.current_price_relation = (
             PriceRelation.BELOW_ZONE if close < lo else PriceRelation.ABOVE_ZONE if close > hi else PriceRelation.INSIDE_ZONE
         )
@@ -318,90 +415,114 @@ class ZoneTracker:
         approach_above = not touched and hi < low <= hi + self.approach_distance
         if approach_below and approach_above:
             raise ZoneStateValidationError(f"{self.zone_id}: bar ending {t} approaches from both sides")
-        breach_above = high >= hi + p.breach_points
-        breach_below = low <= lo - p.breach_points
-        origin = self._last_clear_outside
-
+        raw_breach_above = high >= hi + p.breach_points
+        raw_breach_below = low <= lo - p.breach_points
+        prev = self._last_close
+        gap_above = prev is not None and prev <= lo - clear and low > hi
+        gap_below = prev is not None and prev >= hi + clear and high < lo
         if approach_below:
-            flags.append(ZoneEventType.APPROACHED_FROM_BELOW)
+            flag(ZoneEventType.APPROACHED_FROM_BELOW)
         if approach_above:
-            flags.append(ZoneEventType.APPROACHED_FROM_ABOVE)
-        if self._last_close is not None and not touched:
-            if self._last_close < lo and low > hi:
-                flags.append(ZoneEventType.GAPPED_ABOVE_ZONE)
-            if self._last_close > hi and high < lo:
-                flags.append(ZoneEventType.GAPPED_BELOW_ZONE)
-        if touched:
-            flags.append(
-                {Origin.BELOW: ZoneEventType.TOUCH_FROM_BELOW, Origin.ABOVE: ZoneEventType.TOUCH_FROM_ABOVE}.get(
-                    origin, ZoneEventType.TOUCH_ORIGIN_UNKNOWN
-                )
-            )
-        if breach_above:
-            flags.append(ZoneEventType.BREACHED_ABOVE)
-        if breach_below:
-            flags.append(ZoneEventType.BREACHED_BELOW)
-        if breach_above and breach_below:
-            flags.append(ZoneEventType.TWO_SIDED_BREACH)
-            details[ZoneEventType.TWO_SIDED_BREACH] = "INTRABAR_ORDER_UNKNOWN;REQUIRES_FINER_DATA_REPLAY"
+            flag(ZoneEventType.APPROACHED_FROM_ABOVE)
 
-        interaction = touched or breach_above or breach_below
-        if interaction and self._window is None:
-            self.interaction_origin = origin
+        # --- Episode start: needs arming from an EARLIER bar ------------------
+        # Arming only exists while no episode is active (see the arming step
+        # below), so a new episode can only start when none is running.
+        closing: list[ZoneEvent] = []
+        start: Direction | None = None
+        if self._attempt is None and self.armed_side is Origin.BELOW and (approach_below or touched or gap_above):
+            start = Direction.UPWARD
+        elif self._attempt is None and self.armed_side is Origin.ABOVE and (approach_above or touched or gap_below):
+            start = Direction.DOWNWARD
+        if start is not None:
+            new_id = len(self.attempts) + 1
+            self._attempt = Attempt(
+                new_id,
+                start,
+                self.armed_side,
+                t,
+                self.armed_timestamp,
+                self.armed_close,
+            )
+            self.attempts.append(self._attempt)
+            self.armed_side = self.armed_timestamp = self.armed_close = None  # consumed
             if self.first_interaction_timestamp is None:
                 self.first_interaction_timestamp = t
-            if origin is Origin.BELOW and (touched or breach_above):
-                self._window = _RejectionWindow("UP", t, 0)
-            elif origin is Origin.ABOVE and (touched or breach_below):
-                self._window = _RejectionWindow("DOWN", t, 0)
-            if self._window is not None:
-                flags.append(ZoneEventType.REJECTION_WINDOW_OPENED)
-                details[ZoneEventType.REJECTION_WINDOW_OPENED] = self._window.direction
+            flag(ZoneEventType.ATTEMPT_STARTED, start.value, new_id)
 
-        # Closes: acceptance counters.
-        self.consecutive_acceptance_closes_above = (
-            self.consecutive_acceptance_closes_above + 1 if close >= hi + p.acceptance_points else 0
-        )
-        self.consecutive_acceptance_closes_below = (
-            self.consecutive_acceptance_closes_below + 1 if close <= lo - p.acceptance_points else 0
-        )
-        accepted_above = self.consecutive_acceptance_closes_above == p.acceptance_consecutive_closes
-        accepted_below = self.consecutive_acceptance_closes_below == p.acceptance_consecutive_closes
+        attempt = self._attempt
+        aid = attempt.attempt_id if attempt else None
 
-        # Closes: rejection within the window (interaction bar counts as bar 1).
-        closing: list[ZoneEvent] = []
-        if self._window is not None:
-            self._window.bars_elapsed += 1
-            if self._window.direction == "UP" and close <= lo - p.rejection_points:
-                flags.append(ZoneEventType.REJECTED_UPWARD_ATTEMPT)
-                self._window = None
-            elif self._window.direction == "DOWN" and close >= hi + p.rejection_points:
-                flags.append(ZoneEventType.REJECTED_DOWNWARD_ATTEMPT)
-                self._window = None
-        if accepted_above:
-            flags.append(ZoneEventType.ACCEPTED_ABOVE)
-            if self._window is not None and self._window.direction == "UP":
-                closing += self._end_window(t, ZoneEventType.REJECTION_WINDOW_INVALIDATED, "ACCEPTED_ABOVE", replay)
-        if accepted_below:
-            flags.append(ZoneEventType.ACCEPTED_BELOW)
-            if self._window is not None and self._window.direction == "DOWN":
-                closing += self._end_window(t, ZoneEventType.REJECTION_WINDOW_INVALIDATED, "ACCEPTED_BELOW", replay)
-        if self._window is not None and self._window.bars_elapsed >= p.rejection_window_complete_bars:
-            closing += self._end_window(t, ZoneEventType.REJECTION_WINDOW_EXPIRED, "NO_QUALIFYING_CLOSE", replay)
+        # --- Touch and breach ---------------------------------------------------
+        if touched:
+            if attempt is None:
+                flag(ZoneEventType.TOUCH_ORIGIN_UNKNOWN)
+            else:
+                flag(ZoneEventType.TOUCH_FROM_BELOW if attempt.direction is Direction.UPWARD else ZoneEventType.TOUCH_FROM_ABOVE, "", aid)
+        if raw_breach_above and raw_breach_below:
+            flag(ZoneEventType.TWO_SIDED_BREACH, "INTRABAR_ORDER_UNKNOWN;REQUIRES_FINER_DATA_REPLAY", aid)
+        if attempt is not None and attempt.direction is Direction.UPWARD:
+            if raw_breach_above:
+                flag(ZoneEventType.BREACHED_ABOVE, "", aid)
+            if gap_above:
+                flag(ZoneEventType.GAPPED_ABOVE_ZONE, "ORIGIN_BELOW", aid)
+            interacted = touched or raw_breach_above or gap_above
+        elif attempt is not None:
+            if raw_breach_below:
+                flag(ZoneEventType.BREACHED_BELOW, "", aid)
+            if gap_below:
+                flag(ZoneEventType.GAPPED_BELOW_ZONE, "ORIGIN_ABOVE", aid)
+            interacted = touched or raw_breach_below or gap_below
+        else:
+            interacted = False
 
-        # Memory for the next bar's origin and gap tests (prior closes only).
-        if close <= lo - p.rejection_points:
-            self._last_clear_outside = Origin.BELOW
-        elif close >= hi + p.rejection_points:
-            self._last_clear_outside = Origin.ABOVE
+        # --- Episode evaluation: window, rejection, acceptance ----------------
+        if attempt is not None:
+            upward = attempt.direction is Direction.UPWARD
+            if attempt.window_status is WindowStatus.NOT_OPENED and interacted:
+                attempt.window_status = WindowStatus.OPEN
+                flag(ZoneEventType.REJECTION_WINDOW_OPENED, attempt.direction.value, aid)
+            if attempt.window_status is WindowStatus.OPEN:
+                attempt.window_bars_elapsed += 1
+            beyond = close >= hi + p.acceptance_points if upward else close <= lo - p.acceptance_points
+            back_on_origin_side = close <= lo - clear if upward else close >= hi + clear
+            attempt.acceptance_count = attempt.acceptance_count + 1 if beyond else 0
+
+            if attempt.window_status is WindowStatus.OPEN and back_on_origin_side:
+                flag(ZoneEventType.REJECTED_UPWARD_ATTEMPT if upward else ZoneEventType.REJECTED_DOWNWARD_ATTEMPT, "", aid)
+                closing += self._end_attempt(t, AttemptStatus.REJECTED, replay)
+            elif attempt.acceptance_count >= p.acceptance_consecutive_closes:
+                flag(ZoneEventType.ACCEPTED_ABOVE if upward else ZoneEventType.ACCEPTED_BELOW, "", aid)
+                closing += self._end_attempt(t, AttemptStatus.ACCEPTED, replay)
+            elif attempt.window_status is WindowStatus.EXPIRED and back_on_origin_side:
+                closing += self._end_attempt(t, AttemptStatus.ENDED_REARMED_ON_ORIGIN_SIDE, replay)
+            elif attempt.window_status is WindowStatus.OPEN and attempt.window_bars_elapsed >= p.rejection_window_complete_bars:
+                attempt.window_status = WindowStatus.EXPIRED
+                closing.append(ZoneEvent(t, ZoneEventType.REJECTION_WINDOW_EXPIRED, replay, "NO_QUALIFYING_CLOSE", aid))
+
+        # --- Arming from this bar's close (usable only by LATER bars) ---------
+        # Pending owner decision (D-025): arming happens only while NO episode is
+        # active, so an active attempt's own acceptance closes never arm the
+        # opposite side. After an episode ends (even on this bar), closes arm.
+        if self._attempt is not None:
+            pass
+        elif close <= lo - clear:
+            if self.armed_side is not Origin.BELOW:
+                flag(ZoneEventType.ARMED_FROM_BELOW, str(close))
+                self.armed_side, self.armed_timestamp, self.armed_close = Origin.BELOW, t, close
+        elif close >= hi + clear:
+            if self.armed_side is not Origin.ABOVE:
+                flag(ZoneEventType.ARMED_FROM_ABOVE, str(close))
+                self.armed_side, self.armed_timestamp, self.armed_close = Origin.ABOVE, t, close
         self._last_close = close
 
+        kinds = [f[0] for f in flags]
         for event, state in _STATE_PRECEDENCE:
-            if event in flags:
+            if event in kinds:
                 self.current_state = state
                 self.most_recent_transition_timestamp = t
                 break
-        return [ZoneEvent(t, f, replay, details.get(f, "")) for f in flags] + closing
+        return [ZoneEvent(t, e, replay, d, a) for e, d, a in flags] + closing
 
 
 # ---------------------------------------------------------------------------
@@ -420,10 +541,12 @@ def initialize_zones(daily: DailyLevelSet, pre_open_bars: Iterable[DecisionBar],
     """Build the day's zones.
 
     1. Zones of prior-RTH/overnight levels exist at 09:30 and replay the three
-       09:30-09:45 decision bars (initialisation only; never an entry).
+       09:30-09:45 decision bars (initialisation only; never an entry). The
+       replay may arm, start episodes, accept or reject under the full rules.
     2. At 09:45 the full level set (including the opening range) is clustered
-       again. Zones containing an opening-range level start fresh (UNTOUCHED);
-       any pre-open zone they absorb is archived, not transferred.
+       again. Zones containing an opening-range level start fresh: no arming,
+       no episode, UNTOUCHED. Any pre-open zone they absorb is archived, not
+       transferred.
     """
     tolerance = daily.proximity_tolerance_points
     if tolerance is None:

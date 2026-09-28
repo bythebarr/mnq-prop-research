@@ -1,7 +1,8 @@
-"""Round 9 zone-state rules (owner-specified test list).
+"""Round 9 zone-state rules, as amended with directional arming and episodes.
 
-Zones and bars here are hand-built fixtures for logic tests, not market data.
-Zone under test: L = 20000.00, U = 20004.00, approach distance 6.00 points.
+Zones and bars are hand-built fixtures for logic tests, not market data.
+Zone under test: L = 20000.00, U = 20004.00, approach distance 6.00 points,
+clear-side distance 0.50 (arms below at close <= 19999.50, above at >= 20004.50).
 """
 
 from __future__ import annotations
@@ -19,7 +20,9 @@ from conftest import RULE_FREEZE_PATH
 from mnq_research import level_states
 from mnq_research.config import load_mapping
 from mnq_research.level_states import (
+    AttemptStatus,
     DecisionBar,
+    Direction,
     Origin,
     StateParams,
     ZoneEventType as E,
@@ -51,9 +54,9 @@ def make_level(price: float, level_type: LevelType, available_at: pd.Timestamp, 
     return StructuralLevel(level_type, TRADE, "MNQM4", window, None, None, available_at, price=price)
 
 
-def zone(lower: float = L, upper: float = U, params: StateParams = PARAMS) -> ZoneTracker:
-    levels = [make_level(lower, LevelType.PRIOR_RTH_HIGH, START), make_level(upper, LevelType.OVERNIGHT_HIGH, START, "OVERNIGHT")]
-    (cluster,) = cluster_levels(levels, Decimal(str(upper - lower)), START)
+def zone(params: StateParams = PARAMS) -> ZoneTracker:
+    levels = [make_level(L, LevelType.PRIOR_RTH_HIGH, START), make_level(U, LevelType.OVERNIGHT_HIGH, START, "OVERNIGHT")]
+    (cluster,) = cluster_levels(levels, Decimal("4"), START)
     return ZoneTracker(cluster, params, Decimal("6"), START)
 
 
@@ -65,159 +68,255 @@ def run(tracker: ZoneTracker, *bars: DecisionBar) -> list:
     return [e.event for b in bars for e in tracker.process(b)]
 
 
-def below(i: int) -> DecisionBar:
-    """A bar closing clearly below the zone (sets origin BELOW)."""
-    return bar(i, 19995.0, 19990.0, 19992.0)
+def far_below(i: int) -> DecisionBar:
+    """Wholly below the zone and beyond approach distance; close arms from below."""
+    return bar(i, 19990.0, 19985.0, 19988.0)
 
 
-def above(i: int) -> DecisionBar:
-    return bar(i, 20012.0, 20008.0, 20010.0)
+def far_above(i: int) -> DecisionBar:
+    return bar(i, 20020.0, 20015.0, 20018.0)
 
 
-# --------------------------------------------------------------------------- wicks vs closes
+def inside(i: int) -> DecisionBar:
+    return bar(i, 20002.0, 20001.0, 20001.5)
+
+
+def armed_up_attempt() -> ZoneTracker:
+    """Armed below on bar 0, upward episode started by a touch on bar 1 (close inside)."""
+    z = zone()
+    run(z, far_below(0), inside(1))
+    assert z.active_attempt_direction is Direction.UPWARD
+    return z
+
+
+def armed_down_attempt() -> ZoneTracker:
+    z = zone()
+    run(z, far_above(0), bar(1, 20003.0, 20002.0, 20002.5))
+    assert z.active_attempt_direction is Direction.DOWNWARD
+    return z
+
+
+# =========================================================================== location vs attempt
+
+
+def test_a_bar_wholly_below_a_zone_is_not_breached_below_without_a_downward_episode():
+    z = zone()
+    events = run(z, bar(0, 19995.0, 19990.0, 19992.0))
+    assert E.BREACHED_BELOW not in events and E.ARMED_FROM_BELOW in events
+    assert z.current_price_relation.value == "BELOW_ZONE"
+    assert z.current_state is ZoneState.APPROACHED  # approach outranks arming; never a breach
+
+
+def test_a_bar_wholly_above_a_zone_is_not_breached_above_without_an_upward_episode():
+    events = run(zone(), bar(0, 20012.0, 20008.0, 20010.0))
+    assert E.BREACHED_ABOVE not in events and E.ARMED_FROM_ABOVE in events
+
+
+def test_remaining_below_for_two_closes_is_not_acceptance_below():
+    z = zone()
+    events = run(z, far_below(0), far_below(1), far_below(2))
+    assert E.ACCEPTED_BELOW not in events
+    assert z.armed_side is Origin.BELOW and not z.attempts
+
+
+def test_remaining_above_for_two_closes_is_not_acceptance_above():
+    z = zone()
+    events = run(z, far_above(0), far_above(1), far_above(2))
+    assert E.ACCEPTED_ABOVE not in events
+    assert z.armed_side is Origin.ABOVE and not z.attempts
+
+
+def test_upward_acceptance_requires_an_armed_below_episode():
+    z = zone()  # never armed below: two closes above only arm from above
+    assert E.ACCEPTED_ABOVE not in run(z, bar(0, 20010.0, 20001.0, 20008.0), bar(1, 20010.0, 20005.0, 20008.0))
+    z = armed_up_attempt()
+    events = run(z, bar(2, 20010.0, 20003.0, 20008.0), bar(3, 20010.0, 20005.0, 20008.0))
+    assert E.ACCEPTED_ABOVE in events and z.attempt_status is AttemptStatus.ACCEPTED
+
+
+def test_downward_acceptance_requires_an_armed_above_episode():
+    z = zone()
+    assert E.ACCEPTED_BELOW not in run(z, bar(0, 20003.0, 19990.0, 19995.0), bar(1, 19999.0, 19990.0, 19995.0))
+    z = armed_down_attempt()
+    events = run(z, bar(2, 20001.0, 19994.0, 19995.0), bar(3, 19999.0, 19990.0, 19995.0))
+    assert E.ACCEPTED_BELOW in events
+
+
+def test_arming_and_starting_a_touch_attempt_cannot_happen_on_the_same_bar():
+    z = zone()
+    events = run(z, bar(0, 20002.0, 19990.0, 19999.5))  # touches AND closes clear below
+    assert E.ARMED_FROM_BELOW in events and E.ATTEMPT_STARTED not in events
+    assert E.TOUCH_ORIGIN_UNKNOWN in events
+    assert E.ATTEMPT_STARTED in run(z, inside(1))
+
+
+# =========================================================================== wicks, closes, boundaries
 
 
 def test_wicks_determine_approach_touch_and_breach():
     z = zone()
-    # NOTE (pending owner decision D-024 Q1): under the literal breach rule a bar
-    # lying wholly below the zone is also BREACHED_BELOW, so only the event is asserted.
-    assert E.APPROACHED_FROM_BELOW in run(z, bar(0, 19995.0, 19990.0, 19991.0))  # high within 6 of L
-    assert E.TOUCH_FROM_BELOW in run(z, bar(1, 20001.0, 19990.0, 19991.0))  # wick reaches zone, close far below
-    assert E.BREACHED_ABOVE in run(z, bar(2, 20004.25, 19990.0, 19991.0))  # wick beyond U, close far below
+    run(z, far_below(0))
+    assert E.APPROACHED_FROM_BELOW in run(z, bar(1, 19995.0, 19991.0, 19993.0))  # high within 6 of L
+    assert E.TOUCH_FROM_BELOW in run(z, bar(2, 20001.0, 19999.75, 20000.0))  # wick reaches zone
+    assert E.BREACHED_ABOVE in run(z, bar(3, 20004.25, 20001.0, 20001.0))  # wick beyond U, close inside
     assert z.consecutive_acceptance_closes_above == 0  # wicks never count toward acceptance
 
 
-def test_closes_determine_acceptance_and_rejection_not_wicks():
-    z = zone()
-    events = run(z, bar(0, 20020.0, 20003.0, 20004.25), bar(1, 20020.0, 20003.0, 20004.25))  # wicks far above
-    assert E.ACCEPTED_ABOVE not in events
-    assert E.ACCEPTED_ABOVE in run(z, bar(2, 20006.0, 20004.5, 20004.5), bar(3, 20006.0, 20004.5, 20004.5))
+def test_closes_determine_acceptance_not_wicks():
+    z = armed_up_attempt()
+    assert E.ACCEPTED_ABOVE not in run(z, bar(2, 20020.0, 20003.0, 20004.25), bar(3, 20020.0, 20003.0, 20004.25))
+    assert E.ACCEPTED_ABOVE in run(z, bar(4, 20006.0, 20004.5, 20004.5), bar(5, 20006.0, 20004.5, 20004.5))
 
 
 def test_equality_with_a_zone_boundary_counts_as_a_touch():
-    assert E.TOUCH_ORIGIN_UNKNOWN in run(zone(), bar(0, 20000.0, 19990.0, 19995.0))  # high == L
-    assert E.TOUCH_ORIGIN_UNKNOWN in run(zone(), bar(0, 20010.0, 20004.0, 20008.0))  # low == U
-
-
-def test_a_one_tick_far_boundary_wick_is_a_breach():
-    assert E.BREACHED_ABOVE in run(zone(), bar(0, 20004.25, 20001.0, 20002.0))
-    assert E.BREACHED_ABOVE not in run(zone(), bar(0, 20004.0, 20001.0, 20002.0))  # at U: touch only
-    assert E.BREACHED_BELOW in run(zone(), bar(0, 20002.0, 19999.75, 20001.0))
-
-
-# --------------------------------------------------------------------------- acceptance
-
-
-def test_one_close_beyond_a_zone_is_not_acceptance():
     z = zone()
-    assert E.ACCEPTED_ABOVE not in run(z, bar(0, 20010.0, 20003.0, 20009.0))
+    run(z, far_below(0))
+    assert E.TOUCH_FROM_BELOW in run(z, bar(1, 20000.0, 19995.0, 19999.75))  # high == L
+    assert E.TOUCH_ORIGIN_UNKNOWN in run(zone(), bar(0, 20010.0, 20004.0, 20008.0))  # low == U, unarmed
+
+
+def test_a_one_tick_far_boundary_wick_is_a_breach_within_an_episode():
+    z = zone()
+    run(z, far_below(0))
+    assert E.BREACHED_ABOVE in run(z, bar(1, 20004.25, 20001.0, 20002.0))
+    z = zone()
+    run(z, far_below(0))
+    assert E.BREACHED_ABOVE not in run(z, bar(1, 20004.0, 20001.0, 20002.0))  # at U: touch only
+    z = zone()
+    run(z, far_above(0))
+    assert E.BREACHED_BELOW in run(z, bar(1, 20002.0, 19999.75, 20001.0))
+
+
+def test_one_close_beyond_is_not_acceptance_but_two_are():
+    z = armed_up_attempt()
+    assert E.ACCEPTED_ABOVE not in run(z, bar(2, 20010.0, 20003.0, 20009.0))
     assert z.consecutive_acceptance_closes_above == 1
-
-
-def test_two_consecutive_qualifying_closes_create_acceptance():
-    z = zone()
-    run(z, bar(0, 20010.0, 20003.0, 20009.0))
-    (accepted,) = [e for e in z.process(bar(1, 20010.0, 20005.0, 20008.0)) if e.event is E.ACCEPTED_ABOVE]
-    assert accepted.timestamp_utc == START + 2 * FIVE  # close of the second qualifying bar
-    assert z.current_state is ZoneState.ACCEPTED_ABOVE
-
-    z = zone()
-    assert E.ACCEPTED_BELOW in run(z, bar(0, 20001.0, 19990.0, 19999.5), bar(1, 19999.5, 19990.0, 19999.5))
+    (accepted,) = [e for e in z.process(bar(3, 20010.0, 20005.0, 20008.0)) if e.event is E.ACCEPTED_ABOVE]
+    assert accepted.timestamp_utc == START + 4 * FIVE  # close of the second qualifying bar
+    assert accepted.attempt_id == 1
 
 
 def test_a_close_exactly_two_ticks_beyond_the_boundary_qualifies():
-    assert E.ACCEPTED_ABOVE in run(zone(), bar(0, 20005.0, 20003.0, 20004.5), bar(1, 20005.0, 20003.0, 20004.5))
-    assert E.ACCEPTED_ABOVE not in run(zone(), bar(0, 20005.0, 20003.0, 20004.25), bar(1, 20005.0, 20003.0, 20004.25))
+    z = armed_up_attempt()
+    assert E.ACCEPTED_ABOVE in run(z, bar(2, 20005.0, 20003.0, 20004.5), bar(3, 20005.0, 20003.0, 20004.5))
+    z = armed_up_attempt()
+    assert E.ACCEPTED_ABOVE not in run(z, bar(2, 20005.0, 20003.0, 20004.25), bar(3, 20005.0, 20003.0, 20004.25))
 
 
-def test_an_incomplete_bar_resets_consecutive_close_counters():
+# =========================================================================== rejection
+
+
+def test_rejection_can_occur_on_the_interaction_bar_and_is_not_overridden_by_opposite_acceptance():
     z = zone()
-    events = run(z, bar(0, 20010.0, 20003.0, 20009.0), bar(1, None, None, None, complete=False), bar(2, 20010.0, 20005.0, 20009.0))
-    assert E.ACCEPTED_ABOVE not in events and E.DATA_INTERRUPTION in events
-    # A decision bar missing from the sequence is also an interruption, never skipped over.
-    z = zone()
-    events = run(z, bar(0, 20010.0, 20003.0, 20009.0), bar(2, 20010.0, 20005.0, 20009.0))
-    assert E.ACCEPTED_ABOVE not in events and E.DATA_INTERRUPTION in events
-
-
-def test_a_blackout_resets_counters_and_pending_state():
-    z = zone()
-    run(z, below(0), bar(1, 20002.0, 19998.0, 20001.0))  # upward attempt: rejection window open
-    assert z.active_rejection_window is not None
-    events = run(z, bar(2, 20010.0, 20005.0, 20009.0), bar(3, 20010.0, 20005.0, 20009.0, overlaps_blackout=True))
-    assert E.BLACKOUT_RESET in events and E.REJECTION_WINDOW_INVALIDATED in events
-    assert z.active_rejection_window is None and z.consecutive_acceptance_closes_above == 0
-    assert z.current_state is ZoneState.UNTOUCHED and z.interaction_origin is Origin.UNKNOWN
-    # The pre-blackout qualifying close cannot pair with a post-blackout one.
-    assert E.ACCEPTED_ABOVE not in run(z, bar(4, 20010.0, 20005.0, 20009.0))
-
-
-# --------------------------------------------------------------------------- rejection
-
-
-def test_rejection_can_occur_on_the_interaction_bar():
-    z = zone()
-    events = run(z, below(0), bar(1, 20002.0, 19998.0, 19999.5))  # touch, close <= L - 0.50
+    events = run(z, far_below(0), bar(1, 20002.0, 19998.0, 19999.5))  # touch; close <= L - 0.50
     assert E.TOUCH_FROM_BELOW in events and E.REJECTED_UPWARD_ATTEMPT in events
-    # NOTE (pending D-024 Q2): the two closes below L - 0.50 also satisfy the literal
-    # ACCEPTED_BELOW rule, which outranks rejection, so current_state is not asserted here.
+    # The previous close below the zone does not create an ACCEPTED_BELOW that could outrank it.
+    assert E.ACCEPTED_BELOW not in events
+    assert z.current_state is ZoneState.REJECTED_UPWARD_ATTEMPT
 
 
 @pytest.mark.parametrize("bars_after", [1, 2])
 def test_rejection_can_occur_on_either_of_the_next_two_bars(bars_after):
-    z = zone()
-    run(z, below(0), bar(1, 20002.0, 20000.0, 20001.0))  # interaction, close inside zone
+    z = armed_up_attempt()
     for i in range(2, 1 + bars_after):
-        run(z, bar(i, 20002.0, 20000.0, 20001.0))
+        run(z, inside(i))
     assert E.REJECTED_UPWARD_ATTEMPT in run(z, bar(1 + bars_after, 20001.0, 19995.0, 19999.5))
 
-    z = zone()  # mirror: downward attempt rejected
-    run(z, above(0), bar(1, 20004.0, 20002.0, 20003.0))
+    z = armed_down_attempt()
     for i in range(2, 1 + bars_after):
-        run(z, bar(i, 20004.0, 20002.0, 20003.0))
+        run(z, bar(i, 20003.0, 20002.0, 20002.5))
     assert E.REJECTED_DOWNWARD_ATTEMPT in run(z, bar(1 + bars_after, 20006.0, 20003.0, 20004.5))
 
 
 def test_rejection_cannot_occur_after_its_three_bar_window():
-    z = zone()
-    events = run(z, below(0), *[bar(i, 20002.0, 20000.0, 20001.0) for i in (1, 2, 3)])
-    assert E.REJECTION_WINDOW_EXPIRED in events
-    # A qualifying close after the window, without a new interaction, is not a rejection.
-    # (Whether a later touch may open a NEW attempt is pending D-024 Q3.)
-    assert E.REJECTED_UPWARD_ATTEMPT not in run(z, bar(4, 19999.5, 19995.0, 19999.5))
+    z = armed_up_attempt()
+    assert E.REJECTION_WINDOW_EXPIRED in run(z, inside(2), inside(3))
+    events = run(z, bar(4, 20001.0, 19995.0, 19999.5))  # clear-side close after expiry
+    assert E.REJECTED_UPWARD_ATTEMPT not in events
+    assert z.attempts[0].status is AttemptStatus.ENDED_REARMED_ON_ORIGIN_SIDE
+    assert E.ARMED_FROM_BELOW in events
 
 
 def test_rejection_cannot_be_assigned_with_unknown_origin():
     z = zone()
-    events = run(z, bar(0, 20002.0, 19998.0, 19999.5))  # no prior clearly-outside close
+    events = run(z, bar(0, 20002.0, 19998.0, 19999.5))  # never armed: no episode
     assert E.TOUCH_ORIGIN_UNKNOWN in events
-    assert E.REJECTED_UPWARD_ATTEMPT not in events and E.REJECTED_DOWNWARD_ATTEMPT not in events
-    assert z.interaction_origin is Origin.UNKNOWN
+    assert not {E.REJECTED_UPWARD_ATTEMPT, E.REJECTED_DOWNWARD_ATTEMPT} & set(events)
 
 
-# --------------------------------------------------------------------------- gaps, two-sided, breakout
-
-
-def test_a_gap_can_produce_acceptance_without_a_fabricated_touch():
+def test_a_rejection_closes_its_attempt_and_may_rearm_the_zone():
     z = zone()
-    events = run(z, below(0), bar(1, 20015.0, 20010.0, 20012.0), bar(2, 20015.0, 20010.0, 20012.0))
-    assert E.GAPPED_ABOVE_ZONE in events and E.ACCEPTED_ABOVE in events
+    events = run(z, far_below(0), bar(1, 20002.0, 19998.0, 19999.5))
+    assert E.ATTEMPT_ENDED in events and E.ARMED_FROM_BELOW in events
+    assert z.attempts[0].status is AttemptStatus.REJECTED and z.active_attempt is None
+    assert E.ATTEMPT_STARTED in run(z, inside(2))  # only a LATER bar starts attempt 2
+    assert z.attempt_id == 2
+
+
+def test_delayed_acceptance_after_the_rejection_window_expires():
+    z = armed_up_attempt()
+    run(z, inside(2), inside(3))  # window expired; episode still active
+    assert z.active_attempt_direction is Direction.UPWARD
+    events = run(z, bar(4, 20010.0, 20003.0, 20008.0), bar(5, 20010.0, 20005.0, 20008.0))
+    assert E.ACCEPTED_ABOVE in events
+
+
+# =========================================================================== rearming and attempt ids
+
+
+def test_an_expired_attempt_cannot_restart_from_another_touch_without_rearming():
+    z = armed_up_attempt()
+    run(z, inside(2), inside(3), inside(4), inside(5))  # expired; more touches
+    assert len(z.attempts) == 1 and E.ATTEMPT_STARTED not in run(z, inside(6))
+
+
+def test_the_rearming_bar_cannot_also_begin_the_next_attempt_and_ids_increment():
+    z = armed_up_attempt()
+    run(z, inside(2), inside(3))
+    events = run(z, bar(4, 20002.0, 19995.0, 19999.5))  # touches AND closes clear below: rearm only
+    assert E.ARMED_FROM_BELOW in events and E.ATTEMPT_STARTED not in events
+    started = [e for e in z.process(inside(5)) if e.event is E.ATTEMPT_STARTED]
+    assert [e.attempt_id for e in started] == [2]
+    assert [a.attempt_id for a in z.attempts] == [1, 2]
+
+
+# =========================================================================== gaps and two-sided bars
+
+
+def test_a_qualifying_gap_begins_an_attempt_without_a_fabricated_touch():
+    z = zone()
+    events = run(z, far_below(0), bar(1, 20015.0, 20010.0, 20012.0), bar(2, 20015.0, 20010.0, 20012.0))
+    assert E.GAPPED_ABOVE_ZONE in events and E.ATTEMPT_STARTED in events and E.ACCEPTED_ABOVE in events
     assert not {E.TOUCH_FROM_BELOW, E.TOUCH_FROM_ABOVE, E.TOUCH_ORIGIN_UNKNOWN} & set(events)
 
 
-def test_a_two_sided_breach_is_flagged_without_inferred_ordering():
+def test_gap_origin_must_satisfy_the_clear_side_threshold():
     z = zone()
-    (two_sided,) = [e for e in z.process(bar(0, 20006.0, 19998.0, 20002.0)) if e.event is E.TWO_SIDED_BREACH]
+    events = run(z, bar(0, 19999.75, 19996.0, 19999.75), bar(1, 20015.0, 20010.0, 20012.0), bar(2, 20015.0, 20010.0, 20012.0))
+    assert E.GAPPED_ABOVE_ZONE not in events and E.ACCEPTED_ABOVE not in events  # 19999.75 is not <= L - 0.50
+
+
+def test_a_two_sided_bar_records_only_the_direction_of_the_active_episode():
+    z = zone()
+    run(z, far_below(0))
+    (two_sided,) = [e for e in z.process(bar(1, 20006.0, 19998.0, 20002.0)) if e.event is E.TWO_SIDED_BREACH]
+    kinds = {e.event for e in z.history}
+    assert E.BREACHED_ABOVE in kinds and E.BREACHED_BELOW not in kinds
     assert "INTRABAR_ORDER_UNKNOWN" in two_sided.detail and "REQUIRES_FINER_DATA_REPLAY" in two_sided.detail
-    assert {E.BREACHED_ABOVE, E.BREACHED_BELOW} <= {e.event for e in z.history}
     assert z.current_state is ZoneState.TWO_SIDED_BREACH
+
+
+def test_a_two_sided_bar_with_no_episode_records_no_directional_breach():
+    events = run(zone(), bar(0, 20006.0, 19998.0, 20002.0))
+    assert E.TWO_SIDED_BREACH in events
+    assert E.BREACHED_ABOVE not in events and E.BREACHED_BELOW not in events
 
 
 def test_breakout_is_not_a_separate_event():
     assert SPEC["acceptance_rejection_breakout"]["breakout_definition"] == "NOT_APPLICABLE_AS_SEPARATE_EVENT"
     assert not any("BREAKOUT" in name for name in [*E.__members__, *ZoneState.__members__])
-    z = zone()  # a single huge wick and a single far close are not acceptance
-    assert E.ACCEPTED_ABOVE not in run(z, bar(0, 20100.0, 20003.0, 20090.0))
+    z = armed_up_attempt()
+    assert E.ACCEPTED_ABOVE not in run(z, bar(2, 20100.0, 20003.0, 20090.0))  # one huge bar is not acceptance
 
 
 def test_impossible_bars_are_validation_failures():
@@ -227,7 +326,40 @@ def test_impossible_bars_are_validation_failures():
         zone().process(bar(0, 20004.25, 20003.0, 20009.0))  # close above high
 
 
-# --------------------------------------------------------------------------- initialisation and versioning
+# =========================================================================== interruptions
+
+
+def test_an_incomplete_or_missing_bar_resets_counters_and_executable_state():
+    z = armed_up_attempt()
+    events = run(z, bar(2, 20010.0, 20003.0, 20009.0), bar(3, None, None, None, complete=False), bar(4, 20010.0, 20005.0, 20009.0))
+    assert E.ACCEPTED_ABOVE not in events and E.DATA_INTERRUPTION in events
+    assert z.attempts[0].status is AttemptStatus.ENDED_INTERRUPTION
+    z = armed_up_attempt()
+    events = run(z, bar(2, 20010.0, 20003.0, 20009.0), bar(4, 20010.0, 20005.0, 20009.0))  # bar 3 missing
+    assert E.ACCEPTED_ABOVE not in events and E.DATA_INTERRUPTION in events
+
+
+def test_blackout_and_missing_bar_resets_preserve_history_but_remove_executable_state():
+    for interrupt in (
+        lambda z: z.process(bar(2, 20010.0, 20005.0, 20009.0, overlaps_blackout=True)),
+        lambda z: z.process(bar(3, 20002.0, 20001.0, 20001.5)),  # bar 2 missing
+    ):
+        z = armed_up_attempt()
+        before = z.history
+        interrupt(z)
+        assert z.history[: len(before)] == before  # nothing erased
+        assert z.active_attempt is None and z.armed_side is None
+        assert z.consecutive_acceptance_closes_above == 0 and not z.active_rejection_window
+        assert z.interaction_origin is Origin.UNKNOWN
+    z = armed_up_attempt()
+    events = run(z, bar(2, 20010.0, 20005.0, 20009.0, overlaps_blackout=True))
+    assert E.BLACKOUT_RESET in events and E.REJECTION_WINDOW_INVALIDATED in events
+    assert z.current_state is ZoneState.UNTOUCHED
+    # After the blackout, a fresh rearm is required before any new attempt.
+    assert E.ATTEMPT_STARTED not in run(z, inside(3))
+
+
+# =========================================================================== initialisation and versioning
 
 
 def daily_set(prior_high: float, overnight_low: float, or_high: float, or_low: float) -> DailyLevelSet:
@@ -241,23 +373,24 @@ def daily_set(prior_high: float, overnight_low: float, or_high: float, or_low: f
     return DailyLevelSet(TRADE, "MNQM4", levels, Decimal("6"), ())
 
 
-def pre_open_bars(high: float, low: float, close: float) -> list[DecisionBar]:
+def pre_open_bars(*hlc: tuple[float, float, float]) -> list[DecisionBar]:
     t = ny_time(TRADE, dt.time(9, 30))
-    return [DecisionBar(t + i * FIVE, t + (i + 1) * FIVE, high, low, close) for i in range(3)]
+    return [DecisionBar(t + i * FIVE, t + (i + 1) * FIVE, *v) for i, v in enumerate(hlc)]
 
 
 def test_pre_0945_bars_initialize_prior_and_overnight_zones():
-    daily = daily_set(prior_high=20100.0, overnight_low=19900.0, or_high=20050.0, or_low=20020.0)
-    book = initialize_zones(daily, pre_open_bars(20100.5, 20030.0, 20060.0), PARAMS)  # wicks through prior high
+    daily = daily_set(prior_high=20100.0, overnight_low=19900.0, or_high=20070.0, or_low=20020.0)
+    bars = pre_open_bars((20060.0, 20030.0, 20050.0), (20100.5, 20090.0, 20095.0), (20098.0, 20090.0, 20094.0))
+    book = initialize_zones(daily, bars, PARAMS)
     prior_zone = next(z for z in book.active.values() if LevelType.PRIOR_RTH_HIGH in z.parent_constituent_types)
     assert prior_zone.initialized_at_utc == ny_time(TRADE, dt.time(9, 30))
-    replayed = [e for e in prior_zone.history if e.initialization_replay]
-    assert {e.event for e in replayed} >= {E.TOUCH_ORIGIN_UNKNOWN, E.BREACHED_ABOVE}
+    replayed = {e.event for e in prior_zone.history if e.initialization_replay}
+    assert {E.ARMED_FROM_BELOW, E.ATTEMPT_STARTED, E.BREACHED_ABOVE} <= replayed
 
 
 def test_pre_0945_bars_cannot_generate_entries():
-    daily = daily_set(20100.0, 19900.0, 20050.0, 20020.0)
-    book = initialize_zones(daily, pre_open_bars(20100.5, 20030.0, 20060.0), PARAMS)
+    daily = daily_set(20100.0, 19900.0, 20070.0, 20020.0)
+    book = initialize_zones(daily, pre_open_bars((20060.0, 20030.0, 20050.0), (20100.5, 20090.0, 20095.0)), PARAMS)
     for tracker in book.active.values():
         assert all(e.timestamp_utc <= ny_time(TRADE, dt.time(9, 45)) for e in tracker.history)
         assert all(e.initialization_replay for e in tracker.history if e.event is not E.ZONE_INITIALIZED)
@@ -265,61 +398,68 @@ def test_pre_0945_bars_cannot_generate_entries():
         levels_for_new_entry(daily, ny_time(TRADE, dt.time(9, 40)))
 
 
-def test_opening_range_zones_are_not_touched_by_their_own_construction_bars():
+def test_opening_range_zones_start_unarmed_and_are_not_touched_by_their_construction_bars():
     daily = daily_set(20100.0, 19900.0, 20050.0, 20020.0)
-    book = initialize_zones(daily, pre_open_bars(20050.0, 20020.0, 20035.0), PARAMS)  # bars built the OR
+    book = initialize_zones(daily, pre_open_bars((20050.0, 20020.0, 20035.0), (20045.0, 20025.0, 20030.0)), PARAMS)
     or_zones = [z for z in book.active.values() if set(z.parent_constituent_types) & level_states.OPENING_RANGE_TYPES]
     assert len(or_zones) == 2
     for z in or_zones:
         assert z.initialized_at_utc == ny_time(TRADE, dt.time(9, 45))
         assert [e.event for e in z.history] == [E.ZONE_INITIALIZED]
-        assert z.current_state is ZoneState.UNTOUCHED
+        assert z.current_state is ZoneState.UNTOUCHED and z.armed_side is None and z.active_attempt is None
+    # A post-09:45 bar must arm first; only a later bar may begin an episode.
+    or_high = next(z for z in or_zones if LevelType.OPENING_RANGE_HIGH in z.parent_constituent_types)
+    t = ny_time(TRADE, dt.time(9, 45))
+    first = [e.event for e in or_high.process(DecisionBar(t, t + FIVE, 20051.0, 20040.0, 20049.5))]
+    assert E.ARMED_FROM_BELOW in first and E.ATTEMPT_STARTED not in first
+    second = [e.event for e in or_high.process(DecisionBar(t + FIVE, t + 2 * FIVE, 20051.0, 20045.0, 20050.0))]
+    assert E.ATTEMPT_STARTED in second
 
 
 def test_a_cluster_changed_by_an_opening_range_level_gets_a_new_version_and_fresh_state():
-    daily = daily_set(prior_high=20100.0, overnight_low=19900.0, or_high=20103.0, or_low=20020.0)  # OR high joins prior high
-    book = initialize_zones(daily, pre_open_bars(20101.0, 20095.0, 20100.5), PARAMS)
+    daily = daily_set(prior_high=20100.0, overnight_low=19900.0, or_high=20103.0, or_low=20020.0)
+    book = initialize_zones(daily, pre_open_bars((20060.0, 20030.0, 20050.0), (20101.0, 20095.0, 20100.5)), PARAMS)
     (old,) = book.archived.values()
-    assert old.events(E.TOUCH_ORIGIN_UNKNOWN)  # pre-open history preserved for audit
+    assert old.events(E.ATTEMPT_STARTED)  # pre-open history preserved for audit
     new = book.active[old.superseded_by]
     assert "0945-" in new.zone_id and old.zone_id in new.predecessor_cluster_ids
     assert set(new.parent_constituent_types) == {LevelType.PRIOR_RTH_HIGH, LevelType.OPENING_RANGE_HIGH}
-    assert new.current_state is ZoneState.UNTOUCHED and new.consecutive_acceptance_closes_above == 0
+    assert new.current_state is ZoneState.UNTOUCHED and new.armed_side is None and not new.attempts
     assert [e.event for e in new.history] == [E.ZONE_INITIALIZED]
     assert old.history[-1].event is E.ZONE_SUPERSEDED
 
 
-# --------------------------------------------------------------------------- history and parameters
+# =========================================================================== history and parameters
 
 
 def test_historical_events_survive_later_state_changes():
-    z = zone()
-    run(z, bar(0, 20002.0, 19998.0, 20001.0))
-    run(z, bar(1, 20010.0, 20005.0, 20009.0), bar(2, 20010.0, 20005.0, 20009.0))
-    run(z, bar(3, 20001.0, 19990.0, 19995.0), bar(4, 19996.0, 19990.0, 19995.0))  # later opposite acceptance
+    z = armed_up_attempt()
+    run(z, bar(2, 20010.0, 20003.0, 20008.0), bar(3, 20010.0, 20005.0, 20008.0))  # accepted above; armed above
+    run(z, bar(4, 20006.0, 20002.0, 20003.0))  # retest from above: downward attempt 2
+    run(z, bar(5, 20001.0, 19994.0, 19995.0), bar(6, 19999.0, 19990.0, 19995.0))  # accepted below
     kinds = [e.event for e in z.history]
-    assert E.TOUCH_ORIGIN_UNKNOWN in kinds and E.ACCEPTED_ABOVE in kinds and E.ACCEPTED_BELOW in kinds
+    assert E.TOUCH_FROM_BELOW in kinds and E.ACCEPTED_ABOVE in kinds and E.ACCEPTED_BELOW in kinds
     assert kinds.index(E.ACCEPTED_ABOVE) < kinds.index(E.ACCEPTED_BELOW)
+    assert [a.status for a in z.attempts] == [AttemptStatus.ACCEPTED, AttemptStatus.ACCEPTED]
     assert z.current_state is ZoneState.ACCEPTED_BELOW
 
 
 def test_all_candidate_distances_come_from_the_specification():
-    # 1. Changing the spec changes behaviour.
     spec = copy.deepcopy(SPEC)
     spec["level_states"]["parameters"].update(acceptance_consecutive_closes=3, breach_distance_ticks=2)
     stricter = StateParams.from_spec(spec)
-    assert E.BREACHED_ABOVE not in run(zone(params=stricter), bar(0, 20004.25, 20003.0, 20004.0))  # needs 2 ticks now
-    z = zone(params=stricter)
-    events = run(z, bar(0, 20010.0, 20005.0, 20009.0), bar(1, 20010.0, 20005.0, 20009.0))
+    z = zone(stricter)
+    run(z, far_below(0))
+    assert E.BREACHED_ABOVE not in run(z, bar(1, 20004.25, 20003.0, 20004.0))  # needs 2 ticks now
+    events = run(z, bar(2, 20010.0, 20005.0, 20009.0), bar(3, 20010.0, 20005.0, 20009.0))
     assert E.ACCEPTED_ABOVE not in events  # K = 3 now
-    assert E.ACCEPTED_ABOVE in run(z, bar(2, 20010.0, 20005.0, 20009.0))
-    # 2. The module holds no numeric trading constants of its own (only 0 and 1 for counting).
+    assert E.ACCEPTED_ABOVE in run(z, bar(4, 20010.0, 20005.0, 20009.0))
+    # The module holds no numeric trading constants of its own (only 0 and 1 for counting).
     literals = {
         node.value
         for node in ast.walk(ast.parse(inspect.getsource(level_states)))
         if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and not isinstance(node.value, bool)
     }
     assert literals <= {0, 1}
-    # 3. The validator guards the parameters.
     spec["level_states"]["parameters"]["rejection_window_complete_bars"] = 0
     assert any(p.path.endswith("rejection_window_complete_bars") and p.kind == "INVALID" for p in check_rule_freeze(spec).problems)

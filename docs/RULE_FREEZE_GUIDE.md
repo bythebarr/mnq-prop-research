@@ -439,6 +439,14 @@ entry window count? How are opening-range zones handled?
 **Illustrative only:** "Start UNTOUCHED. Opening-range zones start at
 09:45."
 
+### `level_states.directional_episodes`
+*(Added in the Round 9 amendment.)*
+**Question:** How does a zone distinguish location (price merely above or
+below it) from a directional attempt through it? What arms a zone, what
+starts and ends an attempt, and what is needed before a new attempt?
+**Illustrative only:** "A clear-side close arms the zone. A later touch
+starts the attempt. A fresh arm is needed after each attempt."
+
 ### `level_states.after_acceptance`
 *(Added in Round 9.)*
 **Question:** What does acceptance permit, and for how long? (The details

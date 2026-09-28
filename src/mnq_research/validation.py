@@ -120,6 +120,7 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "level_states.incomplete_bar_handling",
     "level_states.initialization",
     "level_states.after_acceptance",
+    "level_states.directional_episodes",
     "level_states.event_priority",
     # Market structure
     "market_structure.structure_bar_interval",

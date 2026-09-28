@@ -1,4 +1,4 @@
-# Level States: how a zone's interaction history works (Round 9)
+# Level States: how a zone's interaction history works (Round 9, amended)
 
 This explains, in plain English, how price interacts with a structural
 **zone** (a cluster of nearby levels; see Round 8). The rules live in
@@ -6,87 +6,113 @@ This explains, in plain English, how price interacts with a structural
 `level_states`). The code is `src/mnq_research/level_states.py`, and the
 tests are `tests/test_level_states.py`.
 
-> Status: part of a **DRAFT** specification. Three definitions await an
-> owner decision (D-024). This logic records history only. It does not
-> confirm setups, enter, stop or target.
+> Status: part of a **DRAFT** specification. Two interpretations await the
+> owner's confirmation (D-025). This logic records history only. It does
+> not confirm setups, enter, stop or target.
 
-## Words used
+## The core idea: location is not an attempt
 
-* **L / U:** the zone's lower and upper boundaries. **Tick:** 0.25 points.
-* **Decision bar:** a *complete, eligible* five-minute bar. Only these can
-  change a zone's state.
-* **Wick:** a bar's high or low. **Close:** a bar's last price.
+Price sitting above or below a zone is just **location**. It is not a
+breach, and it is not acceptance. Something only happens *to* a zone
+during a **directional attempt** (an "interaction episode"), and an attempt
+must be set up first:
 
-## What wicks decide, and what closes decide
+```
+arm (clear-side close)  →  a LATER bar approaches / touches / gaps  →  attempt starts
+                                                                        ↓
+                         accepted (2 qualifying closes)  or  rejected (within 3 bars)
+                         or ended (interruption, blackout, window end, rearm after expiry)
+```
 
-| Event | Decided by | B0 rule (candidate parameters) |
+Terms: **L / U** are the zone's lower and upper boundaries. The **tick** is
+0.25 points. The **clear-side distance** is 0.50 points in B0.
+
+## 1. Arming
+
+| Arm | Condition (complete, eligible five-minute bar) |
+|---|---|
+| `ARMED_FROM_BELOW` | close ≤ L − 0.50 |
+| `ARMED_FROM_ABOVE` | close ≥ U + 0.50 |
+
+Arming only means "price is clearly established on this side." It is not an
+entry signal. **The bar that arms can never also start an attempt**,
+because a five-minute bar can't show which happened first.
+
+## 2. Starting an attempt
+
+| Attempt | Needs |
+|---|---|
+| UPWARD | armed from below, then a *later* bar that approaches from below, touches, or gaps above |
+| DOWNWARD | armed from above, then a *later* bar that approaches from above, touches, or gaps below |
+
+Starting an attempt uses up the arm. Every attempt gets a new
+`attempt_id`.
+
+**Qualifying gap above:** the previous close was ≤ L − 0.50 and this bar's
+low is above U. `GAPPED_ABOVE_ZONE` is recorded, and no touch is ever
+invented. The gap below mirrors this.
+
+## 3. During an attempt
+
+| Event | Decided by | Rule (B0) |
 |---|---|---|
-| Approached | wick | Within today's proximity tolerance of the zone, but not touching |
-| Touched | wick | The bar's range meets [L, U] (equality counts) |
-| Breached | wick | A wick at least 1 tick beyond a boundary (0.25 points) |
-| Two-sided breach | wick | Both breaches on one bar. Flagged: intrabar order unknown, needs finer-data replay |
-| Accepted above / below | **close** | 2 consecutive closes at least 2 ticks (0.50) beyond the boundary |
-| Rejected attempt | **close** | Within 3 complete bars of an attempt, a close at least 0.50 back on the origin side |
+| Touch | wick | Range meets [L, U] (equality counts) |
+| Breach | wick | **Only in the attempt's direction**: UPWARD needs high ≥ U + 0.25, DOWNWARD needs low ≤ L − 0.25 |
+| Two-sided breach | wick | Both extremes beyond. Always `TWO_SIDED_BREACH` (order unknown, needs finer data). Only the attempt's own direction is also recorded as a breach |
+| Acceptance | **close** | 2 consecutive closes ≥ U + 0.50 (UPWARD) or ≤ L − 0.50 (DOWNWARD). Only the attempt's direction counts |
+| Rejection | **close** | Within 3 complete bars of the first touch, breach or gap: a close back ≥ 0.50 on the origin side |
 
-A touch, a breach or a single close is **never** acceptance. A
-**breakout** is not a separate event: it's the plain-language name for
+A breakout is not a separate event; it's the plain-language name for
 acceptance.
 
-## Origin (which side price came from)
+**Delayed acceptance:** the 3-bar window only limits *rejection*. The
+attempt stays alive after the window expires, so acceptance can still come
+later.
 
-The origin is the side of the most recent close that was *clearly* outside
-the zone: at least 0.50 below L, or at least 0.50 above U. With no such
-close, the origin is **UNKNOWN**. In that case touches, breaches and
-acceptance are still recorded, but **no rejection** can be assigned. The
-origin is never guessed from candle colour or wick order.
+## 4. How an attempt ends
 
-## Things that interrupt a sequence
+* **Accepted** in its direction.
+* **Rejected** within the window. The rejection close may rearm the zone.
+* **Rearmed after expiry:** once the window has expired, a clear-side close
+  back on the origin side ends the attempt and rearms.
+* **Interruption:** an incomplete or missing decision bar, or a news
+  blackout. **All executable state is removed** (arm, attempt, counters,
+  origin), the history is kept, and a fresh arm is needed afterwards.
+* The entry window closes (11:30), or the zone expires.
 
-| Interruption | Effect |
-|---|---|
-| Incomplete decision bar | No transition. Acceptance counters reset. A pending rejection window is invalidated. Recorded as `DATA_INTERRUPTION` |
-| A decision bar missing from the sequence | Same as an incomplete bar. It can never be "skipped over" |
-| News blackout start | Counters reset, pending windows invalidated, and the zone starts fresh (Round 7b) |
-| Trading window closes (11:30) | A pending rejection window is invalidated |
+A new attempt in the same direction **always needs a fresh arm**, followed
+by a later bar. Touching the zone again isn't enough.
 
-## Gaps
+## 5. Start of day
 
-If price jumps completely over a zone, from a close below L to a bar whose
-low is above U, `GAPPED_ABOVE_ZONE` is recorded, and acceptance can follow
-without a touch. No touch is ever invented at a price that didn't trade.
-
-## Start of day
-
-* Zones made only of prior-day and overnight levels exist at **09:30**. The
-  three bars 09:30–09:45 are replayed to set their starting state. These
-  replay events are marked `initialization_replay` and can never produce an
-  entry (new entries start at 09:45).
-* Zones containing an **opening-range** level start at **09:45** as
-  UNTOUCHED. The bars that *built* the opening range are never used to say
-  it was touched.
+* **Prior-day and overnight zones** exist at 09:30. The three bars
+  09:30–09:45 are replayed under the full rules (arming, attempts,
+  acceptance and rejection are all possible). The replay events are marked
+  `initialization_replay` and **can never produce an entry**, because new
+  entries start at 09:45.
+* **Opening-range zones** start at 09:45 with no arm and no attempt. A
+  post-09:45 bar must arm first, and only a later bar can start an attempt.
+  The bars that built the opening range are never used against it.
 * If an opening-range level merges with an earlier zone at 09:45, a **new
-  zone version** is created. The old version and its history are archived
-  and linked, and none of its state carries over.
+  zone version** is created. The old version is archived with its history
+  and links, and none of its state carries over.
 
-## Current state versus history
+## 6. Current state versus history
 
-Each zone keeps an **append-only** event history. `current_state` is only a
-summary. When one bar causes several events, the state follows this
-priority:
+The history is **append-only**. `current_state` summarises the latest bar
+using this priority, among events valid within the active attempt:
 
-acceptance → rejection → two-sided breach → breach → touch → approach → untouched.
+acceptance → rejection → two-sided breach → breach → touch → approach → arm → untouched.
 
-Nothing in the history is ever erased, including an earlier acceptance
-followed by a later opposite one.
+## Interpretations awaiting confirmation (D-025)
 
-## Open questions (D-024)
-
-1. **Breach without crossing.** Taken literally, any bar lying wholly below a
-   zone is a "downward breach", because its low is more than a tick below L.
-   Should a breach require price to come from, or touch, the zone first?
-2. **Acceptance without crossing.** Taken literally, two closes below L − 0.50
-   "accept below" a zone even if price never came from above it. Should
-   acceptance require a prior position on the other side, a touch, or a gap
-   across?
-3. **New attempt after an expired window.** If price stays inside the zone
-   and then touches again, does that start a new attempt?
+1. **No arming during an active attempt.** During an upward attempt, the
+   first close at or above U + 0.50 also meets the "armed from above"
+   condition. If that armed the zone, the next bar hovering just above the
+   zone would count as an *approach from above*, start a downward attempt,
+   and cancel the upward one. Two-close acceptance would then almost never
+   happen. So arming is recorded only while no attempt is active. The side
+   effect is that the "opposite episode begins" ending can't occur in B0.
+2. **Attempts started by an approach.** Their rejection window opens at the
+   first touch, breach or gap. Before that, a clear-side close on the origin
+   side neither rejects nor ends the attempt.

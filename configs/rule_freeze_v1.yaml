@@ -690,20 +690,33 @@ acceptance_rejection_breakout:
       distance; ABOVE if close >= U + rejection close distance; otherwise
       UNKNOWN. Never guessed from candle colour or intrabar ordering.
     breached: >
-      BREACHED_ABOVE: bar high >= U + breach distance. BREACHED_BELOW: bar low
-      <= L - breach distance. A wick breach is not acceptance and not a
-      breakout.
+      AMENDED (Round 9 gap resolution): BREACHED_ABOVE only within an active
+      UPWARD episode and bar high >= U + breach distance; BREACHED_BELOW only
+      within an active DOWNWARD episode and bar low <= L - breach distance. A
+      bar wholly above or below a zone is location, never a breach. A wick
+      breach is not acceptance and not a breakout.
     two_sided_breach: >
-      One bar satisfying both breaches records TWO_SIDED_BREACH, flagged for
-      diagnostics and finer-data replay. Wick order is never inferred. Its
-      close may still count toward acceptance if it meets the close rule.
+      AMENDED: a bar extending at least the breach distance beyond both
+      boundaries always records TWO_SIDED_BREACH (flagged INTRABAR_ORDER_UNKNOWN;
+      REQUIRES_FINER_DATA_REPLAY). It also records only the directional breach
+      supported by the active episode (UPWARD -> BREACHED_ABOVE; DOWNWARD ->
+      BREACHED_BELOW); with no episode, neither. Its close may advance only the
+      active direction's acceptance counter.
   acceptance_definition:
     accepted_above: >
-      K consecutive complete five-minute bars close at or above U + acceptance
-      distance (B0: close >= U + 0.50, K = 2).
+      AMENDED: requires an active UPWARD episode (from ARMED_FROM_BELOW, or a
+      qualifying gap above from a clear below-side close) AND K consecutive
+      complete eligible closes at or above U + acceptance distance (B0: close
+      >= U + 0.50, K = 2).
     accepted_below: >
-      K consecutive complete five-minute bars close at or below L - acceptance
-      distance (B0: close <= L - 0.50, K = 2).
+      AMENDED: requires an active DOWNWARD episode (from ARMED_FROM_ABOVE, or a
+      qualifying gap below from a clear above-side close) AND K consecutive
+      complete eligible closes at or below L - acceptance distance (B0: close
+      <= L - 0.50, K = 2).
+    location_is_not_acceptance: >
+      Closes beyond a zone when price was already on that side establish or
+      maintain location and arming only. Acceptance counters run only for the
+      active attempt direction (the opposite counter is inactive).
     qualifying_bars: >
       Each bar must be complete, eligible under the decision-clock data rules,
       after the zone's initialisation, not overlapping a news blackout, and
@@ -714,27 +727,32 @@ acceptance_rejection_breakout:
       A completed bar closing short of the threshold, an incomplete bar, the
       start of a news blackout, or a reset by another frozen safety rule.
     gaps: >
-      Acceptance needs no prior touch or breach. If price gaps completely over
-      a zone and then produces the qualifying closes, acceptance may occur.
-      Record GAPPED_ABOVE_ZONE / GAPPED_BELOW_ZONE; never fabricate a touch at
-      a price that never traded.
+      AMENDED: qualifying gap above = previous complete eligible close <= L -
+      0.50 AND current complete bar low > U (smallest qualifying low normally U
+      + 0.25); it records GAPPED_ABOVE_ZONE, origin BELOW, and starts an UPWARD
+      episode. Qualifying gap below = previous close >= U + 0.50 AND current
+      high < L; DOWNWARD. A touch is never fabricated; acceptance still needs
+      the qualifying closes.
   rejection_definition:
     upward_attempt: >
-      A zone with origin BELOW is touched or breached above. It is
-      REJECTED_UPWARD_ATTEMPT when, before ACCEPTED_ABOVE, a complete bar
-      closes at or below L - rejection close distance (B0: close <= L - 0.50).
+      AMENDED: an UPWARD episode (see level_states.directional_episodes) that
+      has touched, breached above or gapped above. It is REJECTED_UPWARD_ATTEMPT
+      when, before ACCEPTED_ABOVE, a complete bar closes at or below L -
+      rejection close distance (B0: close <= L - 0.50) within the window.
     downward_attempt: >
-      A zone with origin ABOVE is touched or breached below. It is
-      REJECTED_DOWNWARD_ATTEMPT when, before ACCEPTED_BELOW, a complete bar
-      closes at or above U + rejection close distance (B0: close >= U + 0.50).
+      AMENDED: a DOWNWARD episode that has touched, breached below or gapped
+      below. It is REJECTED_DOWNWARD_ATTEMPT when, before ACCEPTED_BELOW, a
+      complete bar closes at or above U + rejection close distance (B0: close
+      >= U + 0.50) within the window.
     window: >
       The qualifying close must be on the interaction bar or within the next
       two complete bars (at most three complete bars, including the
       interaction bar). A same-bar rejection is valid because the close
       decides it; two-sided bars remain flagged.
     unknown_origin: >
-      Approach, touch, breach and acceptance may still be recorded, but never
-      a rejection.
+      Without an armed side there is no episode: approach, touch
+      (TOUCH_ORIGIN_UNKNOWN) and TWO_SIDED_BREACH may be recorded, but never a
+      directional breach, acceptance or rejection.
     window_failure: >
       A pending window ends WITHOUT rejection after three complete bars, on the
       corresponding acceptance, on an incomplete bar, at a news-blackout start,
@@ -769,24 +787,74 @@ level_states:
     - Invalidates any incomplete pending rejection sequence.
     - Is recorded in the zone history as a data interruption.
     - Cannot be skipped over to claim consecutive confirmation.
+    - A missing expected decision bar is treated exactly like an incomplete bar.
+    - "Round 9 amendment: removes all executable state (arming, active episode, counters, origin); history is preserved; post-interruption rearming and a fresh episode are required."
   initialization:
     at_availability: "current_state UNTOUCHED; interaction_origin UNKNOWN; acceptance counters 0; no active rejection window"
     prior_and_overnight_only_zones: >
       Exist before 09:30. Replay the three complete five-minute bars
-      09:30-09:35, 09:35-09:40 and 09:40-09:45 to establish approach, touch,
-      breach, rejection or acceptance state. This replay is state
-      initialisation only and can never generate an entry before 09:45.
+      09:30-09:35, 09:35-09:40 and 09:40-09:45: they may arm, a later replay
+      bar may begin an episode, and acceptance or rejection may be established
+      if every requirement is met. State initialisation only; never an entry
+      before 09:45.
     opening_range_zones: >
       Any cluster containing OPENING_RANGE_HIGH or OPENING_RANGE_LOW is
-      initialised at 09:45 as UNTOUCHED with zero counters. Its own
-      09:30-09:45 component bars are never used to classify it (they built
-      its boundaries).
+      initialised at 09:45 as UNTOUCHED with no armed side, no episode and zero
+      counters (price relation may be recorded descriptively). A post-09:45
+      complete bar must arm first; only a subsequent bar may begin an episode.
+      Its own 09:30-09:45 component bars are never used to classify it.
     merged_at_0945: >
       If an opening-range level clusters with a pre-existing zone at 09:45,
       create a new 09:45 cluster version: preserve the earlier pre-opening
       cluster and its history for audit, transfer none of its executable
       state, initialise the new cluster UNTOUCHED, and record parent
       constituent and predecessor-cluster identifiers.
+  directional_episodes:   # Round 9 gap resolution (rule owner, 2026-09-28)
+    principle: >
+      Location (above/below/inside), a directional attempt, and successful
+      acceptance are distinct. Merely remaining above or below a zone is
+      location, not breach or acceptance.
+    clear_side_distance: rejection_close_distance_ticks x tick (B0 0.50 points)
+    arming:
+      ARMED_FROM_BELOW: a complete eligible bar closes at or below L - clear_side_distance
+      ARMED_FROM_ABOVE: a complete eligible bar closes at or above U + clear_side_distance
+      meaning: Arming is not an entry signal, approach, touch, breach, acceptance or rejection.
+      stored: [armed_side, armed_timestamp, armed_close, active_attempt_direction, attempt_id, attempt_start_timestamp, attempt_status]
+    episode_start: >
+      UPWARD requires ARMED_FROM_BELOW and a SUBSEQUENT complete bar that
+      approaches from below, touches, or qualifies as a gap above; DOWNWARD
+      mirrors from ARMED_FROM_ABOVE. The bar that arms can never begin the
+      attempt (five-minute OHLC cannot order the two).
+    rearming: >
+      After an episode ends, expires or is invalidated, a new attempt in the
+      same direction needs a fresh clear-side close (a new arm) and then a
+      later bar's approach, touch or gap. The rearming bar never begins the
+      attempt. Every valid episode gets a new incrementing attempt_id.
+    rejection_window_scope: >
+      The three-bar window limits only whether the attempt may be labelled
+      REJECTED. The episode may stay active after the window expires so a
+      delayed acceptance can still be recorded.
+    episode_ends_when:
+      - acceptance in its direction
+      - a blackout or data interruption resets state
+      - the entry window ends
+      - the zone expires
+      - after the rejection window expired, a clear-side close back on the origin side (which rearms)
+      - an opposite directional episode is validly armed and subsequently begins
+    on_rejection: >
+      Record the rejection and end the episode; the rejection close may rearm
+      the zone, but a new attempt still needs a subsequent bar.
+    interpretations_pending_owner_confirmation:   # D-025
+      arming_only_without_active_episode: >
+        Arming is recorded only while no episode is active, so an active
+        attempt's own acceptance closes never arm the opposite side (otherwise
+        an approach after the first qualifying close would start an opposite
+        episode and make two-close acceptance nearly impossible). Consequence:
+        the opposite-episode end condition cannot occur under B0.
+      approach_started_episode: >
+        An episode started by an approach opens its rejection window at its
+        first touch, breach or gap. Before that, a clear-side close on the
+        origin side neither rejects nor ends it.
   after_acceptance: >
     Acceptance is an immutable historical event with its timestamp, not a
     permanent permission to enter. How long it stays entry-eligible, any
@@ -795,13 +863,15 @@ level_states:
     acceptance is recorded as a new event; the earlier one is never erased.
   event_priority:
     rule: Record every satisfied event flag; current_state is chosen by this precedence.
+    scope: only among events valid within the same active directional episode; no acceptance from a nonexistent or opposite episode may override a valid rejection
     order:
-      - ACCEPTED_ABOVE or ACCEPTED_BELOW
-      - REJECTED_UPWARD_ATTEMPT or REJECTED_DOWNWARD_ATTEMPT
+      - directionally valid ACCEPTED_ABOVE or ACCEPTED_BELOW
+      - directionally valid REJECTED_UPWARD_ATTEMPT or REJECTED_DOWNWARD_ATTEMPT
       - TWO_SIDED_BREACH
-      - BREACHED_ABOVE or BREACHED_BELOW
-      - TOUCHED
-      - APPROACHED
+      - directionally valid BREACHED_ABOVE or BREACHED_BELOW
+      - TOUCH
+      - APPROACH
+      - ARMED_FROM_BELOW or ARMED_FROM_ABOVE
       - UNTOUCHED
     note: One bar cannot establish both ACCEPTED_ABOVE and ACCEPTED_BELOW (its close cannot meet both thresholds).
 
