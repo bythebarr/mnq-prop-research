@@ -114,8 +114,36 @@ timezone_policy:
 
 # --- Session definitions -----------------------------------------------------------
 sessions:
-  trading_window_start: TBD
-  trading_window_end: TBD
+  # Round 3 answers (rule owner, 2026-09-28).
+  # Entry-eligibility window:  09:45:00 <= new-entry decision time < 11:30:00  (America/New_York)
+  trading_window_start:
+    time: "09:45:00"
+    timezone: America/New_York
+    boundary: inclusive
+    anchor: 09:30:00 America/New_York cash equity-market open (NOT the 18:00 Globex open)
+    meaning: >
+      New entries first become eligible at 09:45:00. The last completed bar
+      available to the first eligible decision is the bar stamped 09:44:00
+      (covers 09:44:00 to just before 09:45:00, available at 09:45:00). No
+      signal may use any part of the still-forming 09:45 bar, and no entry
+      order may be submitted before 09:45:00. This establishes eligibility
+      only; it never forces a trade.
+  trading_window_end:
+    time: "11:30:00"
+    timezone: America/New_York
+    boundary: exclusive
+    meaning: >
+      No new position or re-entry may be initiated at or after 11:30:00. With
+      one-minute decisions the final permitted decision timestamp is 11:29:00,
+      using market information completed by that time. A position entered
+      before the cutoff may remain open only under the separately defined
+      exit and mandatory-flattening rules.
+  # reference_windows: deliberately UNRESOLVED until structural levels are
+  # defined. The owner may later use overnight, prior regular session, opening
+  # range, PDH, PDL, PDC or other windows, but NONE may be assumed or coded.
+  # "Prior day", "overnight" and "opening range" have no assumed conventional
+  # or vendor meaning: each will need an exact timezone, start boundary, end
+  # boundary, inclusion rule, holiday treatment and contract-roll treatment.
   reference_windows: TBD
   early_close_handling: TBD
 
