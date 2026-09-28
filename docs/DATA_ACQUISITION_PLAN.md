@@ -89,6 +89,25 @@ the future ingestion code.
 * The data manifest stores each applied roll timestamp and both contract
   symbols.
 
+## 5b. Trading calendar artifacts (Round 6)
+
+* Source: the official CME Group Holiday and Trading Hours calendar, per
+  historical year and product category.
+* One versioned local artifact per year, recording: source URL, retrieval
+  timestamp, source publication/update date where available, file hash,
+  applicable products, and for each session date the published open,
+  published close, classification (normal, closed or early close) and notes.
+* Never replaced silently after experiments are registered. A revision
+  becomes a new calendar version with a new hash.
+* The calendar drives date eligibility and emergency-flatten timing. The
+  date status codes are `INELIGIBLE_SCHEDULED_EARLY_CLOSE`,
+  `INELIGIBLE_ROLL_DATE`, `PRE_HOLIDAY_NORMAL_SESSION`,
+  `POST_HOLIDAY_NORMAL_SESSION` and `ROLL_WEEK`.
+* **Open practical question:** CME's site mainly publishes current and
+  upcoming schedules. Obtaining authoritative calendars for 2019–2025 may
+  need archived CME notices or another documented source. It must be
+  resolved before real-data backtests.
+
 ## 6. Research data versus the live execution path
 
 | Layer | Component |

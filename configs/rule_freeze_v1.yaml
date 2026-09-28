@@ -206,7 +206,12 @@ sessions:
   # or vendor meaning: each will need an exact timezone, start boundary, end
   # boundary, inclusion rule, holiday treatment and contract-roll treatment.
   reference_windows: TBD
-  early_close_handling: TBD
+  early_close_handling: >
+    Round 6: scheduled CME early-close sessions are NOT eligible for new
+    strategy trades in Baseline B0; the normal 09:45-11:30 window is not run
+    even if the market stays open past 11:30. The date is recorded as
+    INELIGIBLE_SCHEDULED_EARLY_CLOSE. The exclusion uses only the calendar
+    known before the session, never that day's price behaviour.
 
 # --- Decision-clock timing ------------------------------------------------------------
 decision_clock:
@@ -280,10 +285,45 @@ decision_clock:
 
 # --- Eligible trading dates ---------------------------------------------------------------
 eligible_trading_dates:
-  allowed_weekdays: TBD
-  holiday_and_half_day_policy: TBD
-  roll_week_policy: TBD
-  calendar_source: TBD
+  # Round 6 answers (rule owner, 2026-09-28)
+  allowed_weekdays: [Monday, Tuesday, Wednesday, Thursday, Friday]
+  eligibility_rule: >
+    A weekday is eligible only if CME publishes a normal full equity-index
+    futures session for it and none of the exclusions below applies.
+  holiday_and_half_day_policy:
+    exchange_holidays: >
+      No trading on a date when the relevant CME equity-index futures session
+      is closed. Eligibility is never inferred from the presence of a few
+      overnight records.
+    early_close_days: No trading on scheduled CME early-close sessions (INELIGIBLE_SCHEDULED_EARLY_CLOSE).
+    holiday_adjacent_days: >
+      A normal full session immediately before or after a holiday remains
+      eligible, tagged PRE_HOLIDAY_NORMAL_SESSION or
+      POST_HOLIDAY_NORMAL_SESSION for diagnostics. These dates are not
+      excluded merely because performance looks weaker unless a later change
+      passes the full anti-overfitting process.
+  roll_week_policy: >
+    The designated Monday contract-roll date is ineligible for new trades in
+    Baseline B0 (INELIGIBLE_ROLL_DATE). Tuesday to Friday of roll week remain
+    eligible if they otherwise have normal full sessions; every eligible date
+    in roll week is tagged ROLL_WEEK.
+  calendar_source:
+    source: Official CME Group Holiday and Trading Hours calendar for the relevant historical year and product category (https://www.cmegroup.com/trading-hours.html)
+    reason: CME holiday hours can change and may not be final until about two weeks before the holiday, so the actual dated schedule used must be preserved.
+    artifact_per_year:
+      - source URL
+      - retrieval timestamp
+      - source publication/update date when available
+      - file hash
+      - applicable products
+      - session date
+      - published open
+      - published close
+      - classification (normal, closed or early close)
+      - special notes
+    immutability: >
+      A historical calendar file is never silently replaced after experiments
+      are registered; a revision creates a new calendar version and hash.
 
 # --- News-event policy ----------------------------------------------------------------------
 news_events:
@@ -445,9 +485,41 @@ session_flattening:
       - Submit the configured emergency position-closing order.
       - Confirm that the account is flat.
       - Escalate any rejected or unconfirmed flatten order through the failure-handling process.
-    order_type: TBD
-    failure_handling: TBD
-    early_close_days: TBD
+    early_close_days:
+      time_rule: earlier of 15:55:00 America/New_York and (published CME close - 20 minutes)
+      example: published close 13:15 -> emergency backstop 12:55 New York
+      close_source: the saved, dated CME calendar artifact (never a hard-coded list)
+      reason: new entries are disabled on early-close days, but an unexpected carried or erroneous position must still be protected
+    order_type:
+      type: market (account protection, not price improvement)
+      pre_submission_steps:
+        - Disable all new entries for the account.
+        - Cancel all working entry orders.
+        - Query the current position and working orders.
+        - Cancel or replace conflicting exit orders as needed.
+        - Submit a uniquely identified market closing order for the CONFIRMED remaining position quantity.
+      never: blindly resend a market order while position state is unknown (duplicate closes could reverse the position)
+    failure_handling:
+      state_machine:
+        - Submit the initial emergency market-close order.
+        - Wait up to 2 seconds for acknowledgement and updated position state.
+        - If explicitly rejected but the remaining position is positively confirmed, submit another market-close order for only the confirmed remaining quantity.
+        - At most 3 total submission attempts, at least 2 seconds apart, each preceded by a fresh position query.
+        - Alert immediately after the first rejection or failure to confirm flat.
+      after_third_failure_or_unreliable_state:
+        - Keep the strategy halted.
+        - Submit no new entries for the rest of the trading day.
+        - Preserve any confirmed server-side protective stop; do not cancel protection blindly.
+        - Raise a critical alert requiring manual inspection through R|Trader/Quantower.
+        - Record the event as an operational safety failure.
+      backtest_treatment: >
+        In a normal historical backtest the emergency market order uses the
+        frozen market-order fill model. In a failure/stress simulation a
+        successful flatten is never fabricated: if flat status cannot be
+        established, the path is marked UNRESOLVED_POSITION_CONTROL_FAILURE
+        and, for conservative prop-survival calculations, counts as an
+        account-survival failure unless later modelled market events
+        establish an actual exit.
 
 # --- Same-bar (intrabar) ambiguity ----------------------------------------------------------------------------------------------
 # A one-minute OHLC bar does not reveal whether its high or low came first.
@@ -456,7 +528,19 @@ intrabar_ambiguity:
   stop_and_target_same_bar: TBD
   entry_and_exit_same_bar: TBD
   resolution_with_finer_data: TBD
-  fill_approximation_without_finer_data: TBD
+  fill_approximation_without_finer_data:
+    applies_to: marketable entry orders submitted during a minute when only one-minute OHLCV is available
+    long_entry_fill: minute high + adverse slippage (slippage.entry_ticks)
+    short_entry_fill: minute low - adverse slippage (slippage.entry_ticks)
+    rounding: adversely to the valid MNQ tick
+    flags: [CONSERVATIVE_ONE_MINUTE_FILL, HIGH_INTRABAR_UNCERTAINTY, REQUIRES_FINER_DATA_REPLAY]
+    limitation: >
+      Cannot be used to demonstrate precise execution quality or to promote
+      the system to paper/live trading.
+    limit_and_stop_limit_orders: >
+      Need separate order-specific fill rules. A touched limit price is never
+      assumed filled. Until the entry order type and its fill model are
+      frozen, such trades are execution-incomplete.
 
 # --- Missing-data behaviour ------------------------------------------------------------------------------------------------------
 missing_data:
@@ -493,7 +577,8 @@ prop_account_rules:
     simulation.
   rules_document_version: TBD
   rules_retrieved_date: TBD
-  account_size_usd: TBD
+  account_size_usd: 50000   # nominal product size only; NOT the amount available to lose
+  rules_status: PENDING_CURRENT_RULE_CAPTURE   # usable risk is governed by Tradeify's drawdown, daily-loss, consistency, payout and funded-stage rules
   profit_target_usd: TBD
   max_loss_limit_usd: TBD
   drawdown_type: TBD
