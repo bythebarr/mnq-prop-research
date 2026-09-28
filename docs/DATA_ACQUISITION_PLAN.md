@@ -115,7 +115,10 @@ the future ingestion code.
   Third-party calendars may help with discovery or cross-checks only.
 * One normalised, dated, hashed file. Each event records: `event_id`,
   `event_name`, `event_category`, `scheduled_timestamp_utc`,
-  `scheduled_timestamp_new_york`, `publishing_organization`, `source_url`,
+  `scheduled_timestamp_new_york`, `scheduled_end_timestamp_utc` and
+  `official_scheduled_end_available` (for duration events such as Fed Chair
+  testimony; an end time is never inferred from recordings or reports),
+  `publishing_organization`, `source_url`,
   `source_publication_or_calendar_date`,
   `calendar_retrieval_timestamp_utc`, `calendar_file_hash`,
   `schedule_revision_status` and `notes`.

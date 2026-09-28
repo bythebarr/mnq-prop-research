@@ -94,3 +94,40 @@ def test_inconsistent_tick_arithmetic_is_rejected(completed_spec):
 def test_recorded_instrument_facts_are_consistent(draft_spec):
     report = check_rule_freeze(draft_spec)
     assert not [p for p in report.problems if p.path.startswith("instrument.")]
+
+
+def test_news_minute_fields_must_be_non_negative_whole_numbers(completed_spec):
+    completed_spec["news_events"]["blackout_minutes_before"] = -5
+    completed_spec["news_events"]["entry_protection_buffer_before_blackout_minutes"] = "fifteen"
+    invalid = {p.path for p in check_rule_freeze(completed_spec).problems if p.kind == "INVALID"}
+    assert {
+        "news_events.blackout_minutes_before",
+        "news_events.entry_protection_buffer_before_blackout_minutes",
+    } <= invalid
+
+
+def test_recorded_news_examples_agree_with_recorded_minutes(draft_spec):
+    """Guards against examples drifting from the numbers (the Round 7 10:30 error)."""
+    import datetime as dt
+
+    news = draft_spec["news_events"]
+    before = dt.timedelta(minutes=news["blackout_minutes_before"])
+    after = dt.timedelta(minutes=news["blackout_minutes_after"])
+    buffer = dt.timedelta(minutes=news["entry_protection_buffer_before_blackout_minutes"])
+    hhmm = lambda t: t.strftime("%H:%M")  # noqa: E731
+
+    event = dt.datetime(2026, 1, 1, 11, 0)
+    example = news["entry_protection_buffer"]["example"]
+    assert f"new-entry block from {hhmm(event - before - buffer)}" in example
+    assert f"formal blackout from {hhmm(event - before)}" in example
+    assert f"news-flatten begins {hhmm(event - before - dt.timedelta(minutes=1))}" in example
+
+    event = dt.datetime(2026, 1, 1, 10, 0)
+    blackout_end = event + after
+    # First five-minute bar lying entirely at or after the blackout end closes 5 minutes after
+    # the first five-minute boundary at or after that end.
+    first_bar_start = blackout_end + dt.timedelta(minutes=(-blackout_end.minute) % 5)
+    earliest_decision = first_bar_start + dt.timedelta(minutes=5)
+    example = " ".join(news["blackout_interval"]["example"].split())
+    assert f"earliest possible fresh decision {hhmm(earliest_decision)}" in example
+    assert hhmm(earliest_decision) == "10:35"

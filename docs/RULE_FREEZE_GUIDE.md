@@ -793,6 +793,14 @@ the vendor or excluded."
 **Question:** How many minutes after an event does the blackout end?
 **Illustrative only:** `10`.
 
+### `news_events.entry_protection_buffer_before_blackout_minutes`
+*(Added in Round 7b.)*
+**Question:** How many extra minutes *before* the formal blackout are new
+entries already blocked? This stops the strategy opening a trade that would
+be force-closed almost at once for a known event.
+**Illustrative only:** `15`. For an 11:00 event with a 15-minute blackout,
+new entries would then stop at 10:30.
+
 ### `news_events.open_position_during_event`
 **Question:** What happens to a position that is open when the blackout
 starts?

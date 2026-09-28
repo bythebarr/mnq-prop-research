@@ -93,6 +93,7 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "news_events.event_types",
     "news_events.blackout_minutes_before",
     "news_events.blackout_minutes_after",
+    "news_events.entry_protection_buffer_before_blackout_minutes",
     "news_events.open_position_during_event",
     "news_events.calendar_source",
     # Setup and direction
@@ -243,6 +244,15 @@ FIXED_VALUES: dict[str, Any] = {
     "timezone_policy.storage_timezone": "UTC",
     "timezone_policy.exchange_timezone": EXCHANGE_TIMEZONE,
 }
+
+# Fields whose answer must be a whole number >= 0.
+NON_NEGATIVE_INT_FIELDS: frozenset[str] = frozenset(
+    {
+        "news_events.blackout_minutes_before",
+        "news_events.blackout_minutes_after",
+        "news_events.entry_protection_buffer_before_blackout_minutes",
+    }
+)
 
 # Fields whose answer must be a true/false value.
 BOOLEAN_FIELDS: frozenset[str] = frozenset({"ema.included", "vwap.included", "approval_record.approved"})
@@ -407,6 +417,10 @@ def check_rule_freeze(spec: Any, spec_path: str | Path | None = None) -> RuleFre
             add(RuleFreezeProblem(path, "UNRESOLVED", f"unanswered (currently {value!r})"))
         elif path in BOOLEAN_FIELDS and not isinstance(value, bool):
             add(RuleFreezeProblem(path, "INVALID", f"must be true or false, got {value!r}"))
+        elif path in NON_NEGATIVE_INT_FIELDS and (
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+        ):
+            add(RuleFreezeProblem(path, "INVALID", f"must be a whole number of minutes >= 0, got {value!r}"))
         elif path in FIXED_VALUES and value != FIXED_VALUES[path]:
             add(
                 RuleFreezeProblem(

@@ -383,13 +383,62 @@ news_events:
       by themselves prevent a 09:45 entry.
   blackout_minutes_before: 15
   blackout_minutes_after: 30
+  # Round 7b (rule owner, 2026-09-28): additional to the 15-minute blackout.
+  entry_protection_buffer_before_blackout_minutes: 15
+  entry_protection_buffer:
+    new_entry_block_begins: scheduled event time - blackout_minutes_before - entry_protection_buffer_before_blackout_minutes
+    rules:
+      - No new entry decision may produce an order from 30 minutes before a point-in-time Tier 1 event.
+      - Existing positions may continue under their normal stop and target until the scheduled news-flatten procedure begins.
+      - The news-flatten procedure begins 1 minute before the formal blackout boundary.
+      - The account must be confirmed flat by the formal blackout boundary.
+      - A setup that forms during the entry-protection buffer is invalidated and cannot be resumed after the event.
+    example: "event 11:00 -> new-entry block from 10:30 -> formal blackout from 10:45 -> news-flatten begins 10:44 -> flat by 10:45"
+    purpose: >
+      Prevents opening a position that is almost immediately force-closed
+      solely because a known event is approaching.
   blackout_interval:
     definition: "[scheduled time - 15 minutes, scheduled time + 30 minutes): start inclusive, end exclusive"
-    reentry: new entries may first be considered at the first regular five-minute decision point at or after the blackout end
-    example: "event 10:00 -> blackout 09:45 <= t < 10:30 -> first eligible decision 10:30"
+    reentry: >
+      After a blackout, acceptance, confirmation and the entry trigger must
+      form fresh from completed post-blackout five-minute bars. A five-minute
+      bar that overlaps any part of the blackout cannot participate, so the
+      earliest possible post-blackout decision is at the close of the first
+      five-minute bar that lies entirely at or after the blackout end.
+    example: >
+      event 10:00 -> new-entry block from 09:30 -> formal blackout 09:45 <= t
+      < 10:30 -> first fully post-blackout five-minute bar 10:30-10:35 ->
+      earliest possible fresh decision 10:35 (only if a complete fresh setup
+      exists then). No entry is possible before this event because the
+      strategy window starts at 09:45.
+    correction_note: >
+      Round 7b supersedes the Round 7 example that allowed a decision at
+      10:30; at 10:30 no completed post-blackout decision bar exists yet.
+    frequency_note: >
+      The reduced opportunity on 10:00-release days is intentional. It is not
+      relaxed to increase frequency. Later testing must report how many
+      candidate sessions and trades the policy removes; any change must be
+      justified by market behaviour and validated out of sample.
     overlaps: >
       Overlapping blackouts are merged (e.g. FOMC decision 14:00 and press
       conference 14:30 -> one blackout 13:45 to 15:00).
+    state_reset_at_blackout_start:
+      - Invalidate all pending setup state.
+      - Cancel all unfilled entry orders.
+      - Reset acceptance and confirmation counters.
+      - Clear pending triggers and entry eligibility.
+      - Preserve only independently defined structural reference levels that remain valid under their own rules.
+    duration_events:   # Round 7b: scheduled Federal Reserve Chair monetary-policy testimony
+      applies_to: Scheduled Federal Reserve Chair monetary-policy testimony to Congress
+      reason: Testimony and questioning can continue for hours, unlike a point-in-time release.
+      with_official_scheduled_end: "blackout = [scheduled start - 15 minutes, scheduled end + 30 minutes)"
+      without_reliable_scheduled_end: >
+        If the testimony begins before the 11:30 new-entry cutoff, block new
+        entries for the remainder of the strategy's trading window.
+      never: >
+        Invent an end time from when a recording, transcript or news report
+        later ended.
+      record: the source and whether an official scheduled end was available
   open_position_during_event:
     rule: The strategy may not intentionally carry an open position into a Tier 1 blackout.
     at_blackout_start:
@@ -416,7 +465,7 @@ news_events:
       - "Institute for Supply Management: Manufacturing and Services PMI"
       - "The Conference Board: Consumer Confidence"
       - "University of Michigan Surveys of Consumers: preliminary and final sentiment"
-    record_fields: [event_id, event_name, event_category, scheduled_timestamp_utc, scheduled_timestamp_new_york, publishing_organization, source_url, source_publication_or_calendar_date, calendar_retrieval_timestamp_utc, calendar_file_hash, schedule_revision_status, notes]
+    record_fields: [event_id, event_name, event_category, scheduled_timestamp_utc, scheduled_timestamp_new_york, scheduled_end_timestamp_utc, official_scheduled_end_available, publishing_organization, source_url, source_publication_or_calendar_date, calendar_retrieval_timestamp_utc, calendar_file_hash, schedule_revision_status, notes]
     time_basis: >
       The release time scheduled in advance, never the time a website was
       later scraped or the time the market first reacted.

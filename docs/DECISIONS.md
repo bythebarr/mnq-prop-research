@@ -233,3 +233,26 @@ required home. The arithmetic check catches typos in money-critical
 constants.
 **Reversible:** yes.
 **Status:** CONFIRMED by the project owner on 2026-09-28 (requested in Round 5).
+
+## D-022 — News policy corrections (Round 7b)
+**Decision:** At the owner's direction:
+- A 15-minute **entry-protection buffer** (new required field
+  `news_events.entry_protection_buffer_before_blackout_minutes`) blocks new
+  entries from 30 minutes before a point-in-time Tier 1 event.
+- **Fresh setups after a blackout:** all setup state is reset at the
+  blackout start, and five-minute bars overlapping a blackout can't
+  participate. The earliest decision after a 10:00 event is therefore
+  **10:35, not 10:30**, which corrects the Round 7 example.
+- **Fed Chair testimony** is treated as a duration event: blackout from
+  15 minutes before the scheduled start to 30 minutes after the scheduled
+  end. With no official end, the rest of the trading window is blocked.
+
+The validator now requires the three news minute fields to be whole numbers
+≥ 0. A test checks that the recorded examples agree with the recorded minute
+values.
+**Why:** Avoid trades that are force-closed almost immediately, stop setups
+leaking across news releases, and handle long testimony honestly. The
+example test stops a wrong worked example from contradicting the numbers,
+as happened in Round 7.
+**Reversible:** only through the registered rule-change process.
+**Status:** CONFIRMED by the project owner on 2026-09-28.
