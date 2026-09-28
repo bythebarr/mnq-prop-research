@@ -75,6 +75,20 @@ the future ingestion code.
   structure may span a roll boundary unless the rule freeze explicitly says
   how.
 
+## 5a. Decision bars and execution timing (Round 5)
+
+* Five-minute decision bars are aggregated per
+  `decision_clock.bar_aggregation_rule`. Every interval gets an audit record:
+  expected minutes, present count, missing timestamps, validation status and
+  eligibility. Bars with fewer than five components are
+  `INCOMPLETE_NOT_DECISION_ELIGIBLE`. Empty intervals produce a
+  `NO_TRADES_OR_DATA_FOR_INTERVAL` gap record, not synthetic OHLCV.
+* Entry submission is modelled at the decision-bar close plus 1.000 second.
+  Execution-grade fills need trades or one-second data around each entry.
+  Without it, the trade is flagged `EXECUTION_AMBIGUOUS`.
+* The data manifest stores each applied roll timestamp and both contract
+  symbols.
+
 ## 6. Research data versus the live execution path
 
 | Layer | Component |

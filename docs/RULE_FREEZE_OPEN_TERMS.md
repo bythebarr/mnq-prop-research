@@ -26,7 +26,7 @@ T12, T16 and T17 were added to the template in Round 2 at the owner's request.
 | T11 | "structural invalidation point" | Exact price that invalidates the idea; whether the stop sits exactly there or with a buffer | `structural_invalidation.definition`, `stop_placement.*` | OPEN |
 | T12 | "permitted account risk" | Risk per trade (US dollars or % of what balance); contract rounding; behaviour when even 1 contract exceeds it | `position_management.risk_per_trade` and related | OPEN |
 | T13 | "conservatively before the next meaningful opposing level" | Which level counts as "opposing" and how far before it the target sits | `target_placement.*` | OPEN |
-| T14 | "mandatory session-closing time" | Exact flatten time and order type | `session_flattening.*` | OPEN |
+| T14 | "mandatory session-closing time" | Exact flatten time and order type | `session_flattening.*` | PARTLY DEFINED (Round 5): 15:55:00 NY emergency backstop; normal flatten time and order types still open |
 | T15 | "data are incomplete" | Link to the data policy | `missing_data.*`, `bad_data.*` | OPEN |
 | T16 | "execution assumptions are unsafe" | A finite list of measurable conditions, or drop the phrase | `no_trade_conditions.*` | OPEN |
 | T17 | "required risk constraints cannot be satisfied" | A finite list, e.g. risk per contract, remaining daily loss, prop limits | `no_trade_conditions.*` | OPEN |

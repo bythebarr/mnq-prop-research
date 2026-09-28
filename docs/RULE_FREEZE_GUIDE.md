@@ -224,6 +224,16 @@ market?
 **Illustrative only:** "Order submitted at the open of the next one-minute
 bar."
 
+### `decision_clock.bar_aggregation_rule`
+*(Added in Round 5.)*
+**Question:** When a longer decision bar is built from one-minute bars, what
+happens if some of its one-minute bars are absent? Databento prints no bar
+for a minute with no trades.
+**Why it matters:** A bar built from fewer minutes than expected can look
+like ordinary data, but it can create or hide a signal.
+**Illustrative only:** "Decision-eligible only when all component minutes
+are present. Otherwise, diagnostics only."
+
 ## 7. Eligible trading dates and contract roll
 
 ### `eligible_trading_dates.allowed_weekdays`
@@ -688,6 +698,16 @@ forbidden?
 **Question:** Which order type is used to flatten?
 **Illustrative only:** "Market, with market-exit slippage."
 
+### `session_flattening.emergency_flatten`
+*(Added in Round 5.)*
+**Question:** At what time, every eligible day, are all positions forcibly
+closed as an account-safety backstop? What exact steps happen (cancel
+entries, handle exits, submit the closing order, confirm flat)? Which order
+type is used? What happens if that order is rejected? What about early-close
+days?
+**Illustrative only:** "15:55 New York, market order, alert if not
+confirmed flat within 30 seconds."
+
 ## 13. Same-bar (intrabar) ambiguity
 
 A one-minute bar tells us its open, high, low and close. It does **not** tell
@@ -713,6 +733,16 @@ the bar."
 bars? How are the results compared with the conservative version?
 **Illustrative only:** "Use tick data where available, and report both
 versions."
+
+### `intrabar_ambiguity.fill_approximation_without_finer_data`
+*(Added in Round 5.)*
+**Question:** When the entry must be simulated at "bar close + delay" but
+only one-minute data is available, what conservative fill price and time is
+assumed? The trade is flagged `EXECUTION_AMBIGUOUS` either way.
+**Why it matters:** Assuming the next minute's open, or any favourable
+price, flatters results.
+**Illustrative only:** "Fill at the worse of the next minute's open and the
+decision-bar close, plus entry slippage."
 
 ## 14. Missing and bad data
 

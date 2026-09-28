@@ -82,6 +82,7 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "decision_clock.decision_bar_interval",
     "decision_clock.decision_point",
     "decision_clock.signal_to_order_delay",
+    "decision_clock.bar_aggregation_rule",
     # Eligible dates
     "eligible_trading_dates.allowed_weekdays",
     "eligible_trading_dates.holiday_and_half_day_policy",
@@ -183,10 +184,12 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "session_flattening.no_new_entries_after",
     "session_flattening.flatten_all_by",
     "session_flattening.flatten_order_type",
+    "session_flattening.emergency_flatten",
     # Intrabar ambiguity
     "intrabar_ambiguity.stop_and_target_same_bar",
     "intrabar_ambiguity.entry_and_exit_same_bar",
     "intrabar_ambiguity.resolution_with_finer_data",
+    "intrabar_ambiguity.fill_approximation_without_finer_data",
     # Missing / bad data
     "missing_data.policy",
     "missing_data.max_tolerated_gap_minutes",
@@ -408,6 +411,20 @@ def check_rule_freeze(spec: Any, spec_path: str | Path | None = None) -> RuleFre
             add(
                 RuleFreezeProblem(
                     path, "INVALID", f"must equal {FIXED_VALUES[path]!r} (fixed by the data contract), got {value!r}"
+                )
+            )
+
+    # 2b. Instrument arithmetic must be internally consistent
+    tick, tick_value, point_value = (
+        get_path(spec, f"instrument.{k}") for k in ("tick_size_points", "tick_value_usd", "point_value_usd")
+    )
+    if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (tick, tick_value, point_value)):
+        if abs(tick * point_value - tick_value) > 1e-9:
+            add(
+                RuleFreezeProblem(
+                    "instrument.tick_value_usd",
+                    "INVALID",
+                    f"{tick_value} != tick_size_points x point_value_usd = {tick * point_value}",
                 )
             )
 

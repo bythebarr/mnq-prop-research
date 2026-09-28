@@ -83,3 +83,14 @@ def test_guide_explains_every_required_field():
     documented = set(re.findall(r"`([a-z_]+\.[a-z_]+)`", guide))
     undocumented = [p for p in REQUIRED_FIELDS if p not in documented]
     assert undocumented == []
+
+
+def test_inconsistent_tick_arithmetic_is_rejected(completed_spec):
+    completed_spec["instrument"].update(tick_size_points=0.25, point_value_usd=2.0, tick_value_usd=5.0)
+    report = check_rule_freeze(completed_spec)
+    assert ("instrument.tick_value_usd", "INVALID") in {(p.path, p.kind) for p in report.problems}
+
+
+def test_recorded_instrument_facts_are_consistent(draft_spec):
+    report = check_rule_freeze(draft_spec)
+    assert not [p for p in report.problems if p.path.startswith("instrument.")]

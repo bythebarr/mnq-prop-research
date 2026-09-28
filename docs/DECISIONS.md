@@ -214,3 +214,22 @@ leaking into execution, and proves that the backtested signals are the ones
 that will actually trade.
 **Reversible:** by the rule owner.
 **Status:** CONFIRMED by the project owner on 2026-09-28.
+
+## D-021 — Round 5 template additions and instrument arithmetic check
+**Decision:** Three required fields were added:
+- `decision_clock.bar_aggregation_rule`, answered by the owner in the same
+  round.
+- `session_flattening.emergency_flatten`: the 15:55 New York backstop
+  requested by the owner. Its order type, failure handling and early-close
+  treatment are still TBD.
+- `intrabar_ambiguity.fill_approximation_without_finer_data`: the
+  "separately frozen conservative approximation" the owner referenced. Still
+  TBD.
+
+The validator also rejects a spec whose `tick_value_usd` does not equal
+`tick_size_points × point_value_usd`.
+**Why:** Each concept was named by the owner as a rule, so it needs a
+required home. The arithmetic check catches typos in money-critical
+constants.
+**Reversible:** yes.
+**Status:** CONFIRMED by the project owner on 2026-09-28 (requested in Round 5).

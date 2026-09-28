@@ -54,22 +54,51 @@ specification:
 # --- Instrument and contract selection ---------------------------------------
 instrument:
   root_symbol: MNQ               # stated in the project brief
-  exchange: TBD
-  tick_size_points: TBD
-  tick_value_usd: TBD
-  point_value_usd: TBD
-  contract_selection_method: TBD
+  # Round 5 answers (rule owner, 2026-09-28); CME: $2 x Nasdaq-100 Index, 0.25 tick
+  name: Micro E-mini Nasdaq-100 Index Futures
+  exchange: CME
+  venue: CME Globex
+  currency: USD
+  tick_size_points: 0.25
+  tick_value_usd: 0.50           # = 0.25 points x $2.00 per point (checked by the validator)
+  point_value_usd: 2.00
+  expiration_cycle: [March, June, September, December]
+  contract_selection_method: >
+    Trade the designated CME lead quarterly MNQ contract under a deterministic
+    calendar-based roll rule. Before the frozen roll moment, use the nearest
+    unexpired quarterly contract; from the roll moment, use the following
+    quarterly contract. Never select a contract by looking back at which one
+    ultimately had the greatest full-day volume (future information).
 
 # --- Contract-roll method ------------------------------------------------------
 contract_roll:
-  roll_trigger: TBD
-  roll_timing: TBD
+  roll_trigger: >
+    CME customary U.S. equity-index roll date: the Monday preceding the third
+    Friday of the March, June, September or December expiration month.
+  roll_timing:
+    switch_at: >
+      Opening of the CME Globex trading session associated with the Monday
+      roll date, normally Sunday 18:00:00 America/New_York. If a holiday or
+      exchange schedule changes that opening, use the actual CME-published
+      Globex session opening associated with that trade date.
+    example: >
+      Expiration Friday September 18; roll date Monday September 14. The old
+      contract stays designated through the preceding Friday session; the new
+      contract becomes designated at the Sunday 18:00 New York Globex open;
+      Monday 09:45 trading uses the new contract.
+    manifest: The applied roll timestamp and both contract symbols are stored in the data manifest.
+    boundary_rules:
+      - Never combine old-contract and new-contract prices in one OHLCV bar.
+      - Reset any calculation that cannot validly cross the contract boundary.
+      - Any later use of prior-day or overnight levels must separately define roll-week handling.
   price_series_adjustment: >
     Unadjusted individual contracts. No back-adjusted continuous series is
     used for execution testing. Contracts are joined only by the frozen roll
     rule, with every roll transition flagged so a contract change cannot
     generate an artificial signal.
-  open_position_at_roll: TBD
+  open_position_at_roll: >
+    not applicable: the strategy is intraday and must be flat before the roll
+    moment (enforced by session_flattening.emergency_flatten).
 
 # --- Source data and required fields ------------------------------------------
 source_data:
@@ -208,7 +237,46 @@ decision_clock:
       between decision times. The five-minute restriction applies only to
       generating NEW entry decisions, not to risk management or emergency
       order handling.
-  signal_to_order_delay: TBD
+  signal_to_order_delay:
+    value: 1.000 second from the five-minute decision-bar close to entry-order submission
+    example: >
+      Decision bar 09:40:00 to just before 09:45:00; decision time
+      09:45:00.000; earliest submission 09:45:01.000; earliest possible fill is
+      the first qualifying market event at or after 09:45:01.000. A fill at the
+      09:45:00 opening trade is NOT permitted (it precedes submission).
+    data_requirement: >
+      Execution-grade testing requires Databento trades or one-second data
+      around entries. A one-minute-only test may generate candidate signals
+      but cannot claim precise execution at bar close + 1 second. Without
+      higher-resolution data, flag the trade EXECUTION_AMBIGUOUS and use
+      intrabar_ambiguity.fill_approximation_without_finer_data; never quietly
+      assume a fill at the next minute's open.
+    cutoff: If the submission time is at or after 11:30:00, the order is not submitted.
+    status_note: >
+      Conservative initial engineering assumption, NOT an optimised trading
+      parameter. Forward testing must measure actual Quantower-to-Rithmic
+      timing and stress-test longer delays without tuning them for profit.
+  bar_aggregation_rule:
+    decision_eligible_only_if: all five expected one-minute component bars are present and valid
+    never: [forward-fill absent minutes, fabricate zero-volume bars, build a decision bar from fewer than five components]
+    record_per_interval:
+      - expected one-minute timestamps
+      - present component count
+      - missing timestamps
+      - component validation status
+      - final five-minute decision eligibility
+    one_to_four_components_present: >
+      OHLCV may be calculated and kept for diagnostics only; the bar is marked
+      INCOMPLETE_NOT_DECISION_ELIGIBLE and cannot generate a new signal or
+      satisfy a multi-bar setup.
+    zero_components_present: >
+      No synthetic OHLCV. Record an explicit NO_TRADES_OR_DATA_FOR_INTERVAL gap
+      record and mark the interval ineligible.
+    dependent_calculations: >
+      Any indicator, market-state measurement or structural calculation that
+      requires an incomplete bar is unavailable unless its own specification
+      explicitly defines otherwise. The system fails closed: uncertainty
+      produces no new trade.
 
 # --- Eligible trading dates ---------------------------------------------------------------
 eligible_trading_dates:
@@ -360,9 +428,26 @@ reentry:
 
 # --- Session flattening ---------------------------------------------------------------------------------------------------------
 session_flattening:
-  no_new_entries_after: TBD
+  no_new_entries_after: "11:30:00 America/New_York (see sessions.trading_window_end cutoff_semantics)"
   flatten_all_by: TBD
   flatten_order_type: TBD
+  emergency_flatten:   # Round 5: account-safety backstop, NOT a profit-management target
+    time: "15:55:00"
+    timezone: America/New_York
+    applies: every eligible trading day
+    purpose: >
+      No position may be carried through the 17:00-18:00 New York maintenance
+      interval, overnight, across a weekend or across a contract-roll
+      boundary. The normal strategy should exit substantially earlier.
+    actions:
+      - Cancel all working entry orders.
+      - Cancel or replace working exits as needed.
+      - Submit the configured emergency position-closing order.
+      - Confirm that the account is flat.
+      - Escalate any rejected or unconfirmed flatten order through the failure-handling process.
+    order_type: TBD
+    failure_handling: TBD
+    early_close_days: TBD
 
 # --- Same-bar (intrabar) ambiguity ----------------------------------------------------------------------------------------------
 # A one-minute OHLC bar does not reveal whether its high or low came first.
@@ -371,6 +456,7 @@ intrabar_ambiguity:
   stop_and_target_same_bar: TBD
   entry_and_exit_same_bar: TBD
   resolution_with_finer_data: TBD
+  fill_approximation_without_finer_data: TBD
 
 # --- Missing-data behaviour ------------------------------------------------------------------------------------------------------
 missing_data:
