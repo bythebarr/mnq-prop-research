@@ -840,27 +840,35 @@ level_states:
       - the entry window ends
       - the zone expires
       - after the rejection window expired, a clear-side close back on the origin side (which rearms)
-      - an opposite directional episode is validly armed and subsequently begins
+      - an approach-only episode is withdrawn (see approach_only_episodes)
+    opposite_arming: >
+      CONFIRMED (D-025): opposite-side arming is evaluated only after the
+      current episode has ended. While an episode is active, closes in its
+      continuation direction count only toward its acceptance; a qualifying
+      acceptance ends it, after which the acceptance bar's close may arm the
+      opposite side for a later retest or opposite attempt, which must still
+      begin on a subsequent completed bar. An active episode cannot be stolen
+      by an opposite approach created by its own successful move. (The former
+      end condition "an opposite directional episode is validly armed and
+      subsequently begins" is removed as unreachable and inappropriate in B0.)
     on_rejection: >
       Record the rejection and end the episode; the rejection close may rearm
       the zone, but a new attempt still needs a subsequent bar.
-    interpretations_pending_owner_confirmation:   # D-025
-      arming_only_without_active_episode: >
-        Arming is recorded only while no episode is active, so an active
-        attempt's own acceptance closes never arm the opposite side (otherwise
-        an approach after the first qualifying close would start an opposite
-        episode and make two-close acceptance nearly impossible). Consequence:
-        the opposite-episode end condition cannot occur under B0.
-      approach_started_episode: >
-        An episode started by an approach opens its rejection window at its
-        first touch, breach or gap. Before that, a clear-side close on the
-        origin side neither rejects nor ends it.
+    approach_only_episodes: >
+      CONFIRMED (D-025): an approach may begin an episode, but the three-bar
+      rejection window starts only at the first touch, directionally valid
+      breach or qualifying gap. Until then the episode is APPROACH_ONLY: a close
+      back on the origin side is never a rejection. If, on a bar after the
+      episode's start bar, price closes back at the origin-side arming
+      threshold before any touch, breach or gap, the episode ends as
+      APPROACH_WITHDRAWN (not rejected), the armed state is restored, a later
+      bar is required to begin another attempt, and the approach history is
+      kept for diagnostics.
   after_acceptance: >
-    Acceptance is an immutable historical event with its timestamp, not a
-    permanent permission to enter. How long it stays entry-eligible, any
-    pullback requirement, continuation confirmation, the entry trigger, the
-    stop and the target are defined in later rounds. A later opposite
-    acceptance is recorded as a new event; the earlier one is never erased.
+    Acceptance is an immutable historical event with its timestamp and a
+    unique acceptance_id. Its entry eligibility is governed only by the
+    confirmation section (Round 10). A later opposite acceptance is recorded as
+    a new event; the earlier one is never erased.
   event_priority:
     rule: Record every satisfied event flag; current_state is chosen by this precedence.
     scope: only among events valid within the same active directional episode; no acceptance from a nonexistent or opposite episode may override a valid rejection
@@ -877,9 +885,117 @@ level_states:
 
 # --- Confirmation (added Round 2) ------------------------------------------------------------------------
 confirmation:
-  definition: TBD
-  max_bars_after_acceptance: TBD
-  failure_handling: TBD
+  # Round 10 answers (rule owner, 2026-09-29). Implemented in
+  # src/mnq_research/confirmation.py; plain English in docs/CONFIRMATION.md.
+  # L / U = zone lower / upper boundary; tick = 0.25; retest_distance = the
+  # day's level_proximity_tolerance_points. All comparisons are inclusive.
+  parameters:   # candidate B0 values, not optimised
+    confirmation_type: PULLBACK_HOLD_CONTINUATION
+    retest_distance_method: level_proximity_tolerance_points
+    opposite_boundary_failure_distance_ticks: 1
+    retest_hold_close_distance_ticks: 2
+    continuation_break_distance_ticks: 1
+    continuation_bar_requirement: immediately_next_eligible_complete_bar
+  definition:
+    only_pattern: >
+      PULLBACK_HOLD_CONTINUATION. No alternative route; acceptance followed
+      only by further extension is not sufficient (B0 does not chase a move
+      that never offers an objective pullback-and-hold).
+    long:
+      step_1_acceptance: ACCEPTED_ABOVE under Round 9 (acceptance_id and timestamp stored)
+      step_2_retest_hold: >
+        A subsequent complete eligible bar (never the acceptance bar itself)
+        with low <= U + retest_distance AND low >= L - 0.25 AND close >= U +
+        0.50 becomes LONG_RETEST_HOLD. Store retest_hold_timestamp/high/low/
+        close, acceptance_id and zone_version_id.
+      step_3_continuation: >
+        The immediately following complete eligible bar closes >= retest-hold
+        high + 0.25 -> CONFIRMED_LONG_CONTINUATION at its close. A wick alone
+        is insufficient.
+    short:
+      step_1_acceptance: ACCEPTED_BELOW under Round 9
+      step_2_retest_hold: >
+        A subsequent complete eligible bar with high >= L - retest_distance AND
+        high <= U + 0.25 AND close <= L - 0.50 becomes SHORT_RETEST_HOLD.
+      step_3_continuation: >
+        The immediately following complete eligible bar closes <= retest-hold
+        low - 0.25 -> CONFIRMED_SHORT_CONTINUATION. A wick alone is
+        insufficient.
+    consecutive: >
+      Hold and continuation bars must be consecutive complete eligible decision
+      bars; any missing, incomplete, blackout-overlapping or ineligible bar
+      between them invalidates the sequence.
+    first_candidate_controls: >
+      The first bar meeting every retest-hold condition is the sole candidate
+      for that acceptance_id. If the next bar fails the continuation close,
+      record CONFIRMATION_FAILED_AFTER_HOLD, invalidate the acceptance for
+      entry, and never search for a second candidate.
+    not_entry: >
+      A confirmation places no order and defines no entry type, price,
+      expiry, size, stop, target or management (later rounds).
+  max_bars_after_acceptance: 6
+  clock:
+    counting: >
+      Only expected five-minute decision slots after the acceptance timestamp;
+      the acceptance bar is bar zero. Acceptance at 10:00 -> bars close 10:05,
+      10:10, 10:15, 10:20, 10:25, 10:30. Confirmation must complete by the
+      close of bar 6, so the latest possible retest-hold is bar 5; a hold
+      candidate on bar 6 cannot qualify.
+    note: six bars = 30 clock minutes under uninterrupted normal bars; candidate parameter, not optimised
+  failure_handling:
+    pre_hold_long_invalidated_when:
+      - A complete bar closes at or below U.
+      - A bar trades at or below L - 0.25.
+      - ACCEPTED_BELOW is established.
+      - The six-bar confirmation clock expires.
+      - A blackout begins.
+      - A decision bar is missing, incomplete or ineligible.
+      - The 11:30 new-entry cutoff is reached.
+      - The zone expires or changes version.
+    pre_hold_short_invalidated_when:
+      - A complete bar closes at or above L.
+      - A bar trades at or above U + 0.25.
+      - ACCEPTED_ABOVE is established.
+      - The six-bar confirmation clock expires.
+      - A blackout begins.
+      - A decision bar is missing, incomplete or ineligible.
+      - The 11:30 new-entry cutoff is reached.
+      - The zone expires or changes version.
+    neutral_closes: >
+      A close between U and U + 0.50 (long), or between L - 0.50 and L (short),
+      does not satisfy the hold but does not by itself fail the setup.
+    post_hold_invalidated_when:
+      - The next bar fails the continuation-close threshold.
+      - The next bar is missing or incomplete.
+      - It overlaps a blackout.
+      - It closes after the acceptance's six-bar lifetime.
+      - Its decision/submission timing reaches the 11:30 cutoff.
+      - The zone version changes.
+      - The long bar trades at or below L - 0.25 / the short bar at or above U + 0.25.
+    no_carry: A retest-hold candidate is never carried across any interruption.
+    equality_conflict_resolution: >
+      PENDING OWNER CONFIRMATION (D-026): a low of exactly L - 0.25 (long) or a
+      high of exactly U + 0.25 (short) meets both the retest-hold limit
+      ("low >= L - 0.25", equality qualifies) and the failure rule ("trades at
+      or below L - 0.25"). Implemented: the failure rule wins.
+  acceptance_lifetime:
+    outcomes: [CONFIRMED, FAILED, TIMED_OUT, INVALIDATED_BY_INTERRUPTION, INVALIDATED_BY_BLACKOUT, INVALIDATED_BY_CUTOFF, INVALIDATED_BY_ZONE_CHANGE]
+    rule: >
+      Each acceptance reaches exactly one outcome; its entry eligibility ends
+      permanently at the first. The acceptance stays in history but can never
+      later become executable.
+    identity: >
+      A confirmation references exactly one acceptance_id, attempt_id and
+      zone_version_id; events from different acceptances, attempts or zone
+      versions are never combined.
+    fresh_attempts: >
+      A failed or timed-out confirmation does not retire the zone for the day.
+      Another candidate needs the full process: the old acceptance is terminal;
+      the zone returns to a valid clear-side armed state; a subsequent bar
+      begins a fresh episode with a new attempt_id; it produces a new
+      acceptance_id with its own clock. Nothing earlier (approach, attempt,
+      acceptance, retest-hold or confirmation bar) is reused; no second chance
+      under the same acceptance.
 
 # --- EMA (only if later approved) ----------------------------------------------------------------------------
 # If `included` is false, the other EMA fields are not required.

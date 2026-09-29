@@ -105,6 +105,7 @@ mnq-prop-research/
 │   ├── RULE_FREEZE_GUIDE.md   ← every open question, in plain English
 │   ├── DATA_CONTRACT.md       ← bar-data schema, time policy, intrabar ambiguity
 │   ├── LEVEL_STATES.md        ← plain-English zone state rules
+│   ├── CONFIRMATION.md        ← plain-English confirmation rules
 │   └── DECISIONS.md           ← architecture decisions and rationale
 ├── data/                      ← NOT committed to Git (except placeholders)
 │   ├── raw/                   ← vendor files exactly as received
@@ -122,6 +123,7 @@ mnq-prop-research/
 │   ├── data_contracts.py      ← bar schema and data validation
 │   ├── hashing.py             ← reproducible fingerprints
 │   ├── experiment_registry.py ← pre-registration of experiments
+│   ├── confirmation.py        ← Round 10 continuation confirmation (component only)
 │   ├── level_states.py        ← Round 9 zone interaction states (component only)
 │   ├── structural_levels.py   ← Round 8 level rules (component only; not a backtest)
 │   └── synthetic_data.py      ← FAKE data for software tests only

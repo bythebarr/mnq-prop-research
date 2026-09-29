@@ -412,6 +412,26 @@ the day, or can a fresh acceptance start again?
 **Illustrative only:** "The setup is void. That level may not be used again
 today."
 
+### `confirmation.parameters`
+*(Added in Round 10.)*
+**Question:** Which confirmation pattern is used, and which distances in
+ticks define the retest-hold and continuation bars?
+**Illustrative only:** `retest_hold_close_distance_ticks: 2`.
+
+### `confirmation.clock`
+*(Added in Round 10.)*
+**Question:** How are the bars after acceptance counted, and what is the
+last bar on which a hold, or a continuation, can still qualify?
+**Illustrative only:** "The acceptance bar is bar 0. The hold can be no
+later than the second-to-last bar."
+
+### `confirmation.acceptance_lifetime`
+*(Added in Round 10.)*
+**Question:** What outcomes can an acceptance reach? Can it ever be reused?
+What must happen before a zone can produce another setup?
+**Illustrative only:** "One outcome per acceptance. A new setup needs a
+fresh arm, attempt and acceptance."
+
 ### `level_states.parameters`
 *(Added in Round 9.)*
 **Question:** Which distances and counts define approach, breach, acceptance

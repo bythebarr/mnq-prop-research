@@ -117,6 +117,7 @@ class AttemptStatus(str, Enum):
     ACCEPTED = "ACCEPTED"
     REJECTED = "REJECTED"
     ENDED_REARMED_ON_ORIGIN_SIDE = "ENDED_REARMED_ON_ORIGIN_SIDE"
+    APPROACH_WITHDRAWN = "APPROACH_WITHDRAWN"
     ENDED_INTERRUPTION = "ENDED_INTERRUPTION"
     ENDED_BLACKOUT = "ENDED_BLACKOUT"
     ENDED_TRADING_WINDOW = "ENDED_TRADING_WINDOW"
@@ -211,6 +212,7 @@ class ZoneEvent:
     initialization_replay: bool = False
     detail: str = ""
     attempt_id: int | None = None
+    acceptance_id: str | None = None
 
 
 @dataclass
@@ -228,6 +230,12 @@ class Attempt:
     window_bars_elapsed: int = 0
     acceptance_count: int = 0
     end_timestamp_utc: pd.Timestamp | None = None
+    acceptance_id: str | None = None
+
+    @property
+    def phase(self) -> str:
+        """APPROACH_ONLY until the first touch, directional breach or qualifying gap."""
+        return "APPROACH_ONLY" if self.window_status is WindowStatus.NOT_OPENED else "INTERACTING"
 
 
 def _d(value: float) -> Decimal:
@@ -255,6 +263,8 @@ class ZoneTracker:
         self.parent_constituent_types = cluster.constituent_level_types
         self.superseded_by: str | None = None
         self.attempts: list[Attempt] = []
+        # Acceptances that already have a confirmation sequence (each may be used once).
+        self.claimed_acceptance_ids: set[str] = set()
         self._history: list[ZoneEvent] = [ZoneEvent(initialized_at_utc, ZoneEventType.ZONE_INITIALIZED)]
         self._last_bar_end: pd.Timestamp = initialized_at_utc
         self._in_blackout = False
@@ -401,10 +411,10 @@ class ZoneTracker:
             raise ZoneStateValidationError(f"{self.zone_id}: impossible OHLC in bar ending {bar.end_utc}")
         p, t = self.params, bar.end_utc
         clear = p.clear_side_points
-        flags: list[tuple[ZoneEventType, str, int | None]] = []
+        flags: list[tuple[ZoneEventType, str, int | None, str | None]] = []
 
-        def flag(event: ZoneEventType, detail: str = "", attempt_id: int | None = None) -> None:
-            flags.append((event, detail, attempt_id))
+        def flag(event: ZoneEventType, detail: str = "", attempt_id: int | None = None, acceptance_id: str | None = None) -> None:
+            flags.append((event, detail, attempt_id, acceptance_id))
 
         # --- Location and wick geometry (descriptive) -------------------------
         self.current_price_relation = (
@@ -492,18 +502,29 @@ class ZoneTracker:
                 flag(ZoneEventType.REJECTED_UPWARD_ATTEMPT if upward else ZoneEventType.REJECTED_DOWNWARD_ATTEMPT, "", aid)
                 closing += self._end_attempt(t, AttemptStatus.REJECTED, replay)
             elif attempt.acceptance_count >= p.acceptance_consecutive_closes:
-                flag(ZoneEventType.ACCEPTED_ABOVE if upward else ZoneEventType.ACCEPTED_BELOW, "", aid)
+                attempt.acceptance_id = f"{self.zone_id}:ACC{aid}"
+                flag(ZoneEventType.ACCEPTED_ABOVE if upward else ZoneEventType.ACCEPTED_BELOW, "", aid, attempt.acceptance_id)
                 closing += self._end_attempt(t, AttemptStatus.ACCEPTED, replay)
             elif attempt.window_status is WindowStatus.EXPIRED and back_on_origin_side:
                 closing += self._end_attempt(t, AttemptStatus.ENDED_REARMED_ON_ORIGIN_SIDE, replay)
+            elif (
+                attempt.window_status is WindowStatus.NOT_OPENED
+                and back_on_origin_side
+                and attempt.start_timestamp_utc != t
+            ):
+                # Approach-only episode: price returned to the origin-side arming
+                # threshold before any touch/breach/gap. Not a rejection; the
+                # arming step below restores the armed state for a LATER bar.
+                closing += self._end_attempt(t, AttemptStatus.APPROACH_WITHDRAWN, replay)
             elif attempt.window_status is WindowStatus.OPEN and attempt.window_bars_elapsed >= p.rejection_window_complete_bars:
                 attempt.window_status = WindowStatus.EXPIRED
                 closing.append(ZoneEvent(t, ZoneEventType.REJECTION_WINDOW_EXPIRED, replay, "NO_QUALIFYING_CLOSE", aid))
 
         # --- Arming from this bar's close (usable only by LATER bars) ---------
-        # Pending owner decision (D-025): arming happens only while NO episode is
+        # Confirmed by the owner (D-025): arming happens only while NO episode is
         # active, so an active attempt's own acceptance closes never arm the
         # opposite side. After an episode ends (even on this bar), closes arm.
+        # Opposite-side arming is evaluated only after the current episode ends.
         if self._attempt is not None:
             pass
         elif close <= lo - clear:
@@ -522,7 +543,7 @@ class ZoneTracker:
                 self.current_state = state
                 self.most_recent_transition_timestamp = t
                 break
-        return [ZoneEvent(t, e, replay, d, a) for e, d, a in flags] + closing
+        return [ZoneEvent(t, e, replay, d, a, acc) for e, d, a, acc in flags] + closing
 
 
 # ---------------------------------------------------------------------------

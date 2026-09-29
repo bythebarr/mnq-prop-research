@@ -6,9 +6,9 @@ This explains, in plain English, how price interacts with a structural
 `level_states`). The code is `src/mnq_research/level_states.py`, and the
 tests are `tests/test_level_states.py`.
 
-> Status: part of a **DRAFT** specification. Two interpretations await the
-> owner's confirmation (D-025). This logic records history only. It does
-> not confirm setups, enter, stop or target.
+> Status: part of a **DRAFT** specification. D-025 is confirmed. This logic
+> records history only. Continuation confirmation is in `CONFIRMATION.md`.
+> There is no entry, stop or target logic yet.
 
 ## The core idea: location is not an attempt
 
@@ -78,6 +78,10 @@ later.
 * **Interruption:** an incomplete or missing decision bar, or a news
   blackout. **All executable state is removed** (arm, attempt, counters,
   origin), the history is kept, and a fresh arm is needed afterwards.
+* **Approach withdrawn:** an attempt that has only *approached*, with no
+  touch, breach or gap yet, ends as `APPROACH_WITHDRAWN` if a later bar
+  closes back at the origin-side arming threshold. It is *not* a rejection.
+  The zone is rearmed, and a later bar must start any new attempt.
 * The entry window closes (11:30), or the zone expires.
 
 A new attempt in the same direction **always needs a fresh arm**, followed
@@ -104,15 +108,14 @@ using this priority, among events valid within the active attempt:
 
 acceptance → rejection → two-sided breach → breach → touch → approach → arm → untouched.
 
-## Interpretations awaiting confirmation (D-025)
+## Confirmed interpretations (D-025)
 
-1. **No arming during an active attempt.** During an upward attempt, the
-   first close at or above U + 0.50 also meets the "armed from above"
-   condition. If that armed the zone, the next bar hovering just above the
-   zone would count as an *approach from above*, start a downward attempt,
-   and cancel the upward one. Two-close acceptance would then almost never
-   happen. So arming is recorded only while no attempt is active. The side
-   effect is that the "opposite episode begins" ending can't occur in B0.
-2. **Attempts started by an approach.** Their rejection window opens at the
-   first touch, breach or gap. Before that, a clear-side close on the origin
-   side neither rejects nor ends the attempt.
+1. **No arming during an active attempt.** Opposite-side arming is evaluated
+   only after the current attempt ends. An attempt can't be "stolen" by an
+   opposite approach created by its own successful move. The former ending
+   "an opposite episode arms and begins" has been removed.
+2. **Approach-only attempts.** The rejection window opens at the first
+   touch, breach or gap. Before that, the attempt can only be withdrawn,
+   never rejected.
+3. **Every acceptance** gets a unique `acceptance_id`, which confirmation
+   refers to.

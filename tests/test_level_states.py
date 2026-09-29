@@ -463,3 +463,50 @@ def test_all_candidate_distances_come_from_the_specification():
     assert literals <= {0, 1}
     spec["level_states"]["parameters"]["rejection_window_complete_bars"] = 0
     assert any(p.path.endswith("rejection_window_complete_bars") and p.kind == "INVALID" for p in check_rule_freeze(spec).problems)
+
+
+# =========================================================================== D-025 clarifications
+
+
+def test_an_approach_only_episode_is_withdrawn_not_rejected():
+    z = zone()
+    run(z, far_below(0))
+    run(z, bar(1, 19995.0, 19991.0, 19994.0))  # approach starts the episode (close not clear-side)
+    assert z.active_attempt.phase == "APPROACH_ONLY" and not z.active_rejection_window
+    events = run(z, bar(2, 19996.0, 19990.0, 19992.0))  # back at the origin-side threshold, never touched
+    assert E.REJECTED_UPWARD_ATTEMPT not in events
+    assert z.attempts[0].status is AttemptStatus.APPROACH_WITHDRAWN
+    assert E.ARMED_FROM_BELOW in events and E.ATTEMPT_STARTED not in events  # rearmed; a LATER bar must start
+    assert E.APPROACHED_FROM_BELOW in [e.event for e in z.history]  # approach history kept
+    assert E.ATTEMPT_STARTED in run(z, inside(3))
+    assert z.attempt_id == 2
+
+
+def test_every_acceptance_gets_a_unique_acceptance_id():
+    z = armed_up_attempt()
+    (accepted,) = [e for e in (*z.process(bar(2, 20010.0, 20003.0, 20008.0)), *z.process(bar(3, 20010.0, 20005.0, 20008.0))) if e.event is E.ACCEPTED_ABOVE]
+    assert accepted.acceptance_id == f"{z.zone_id}:ACC1" == z.attempts[0].acceptance_id
+
+
+def test_gap_threshold_is_enforced_in_a_non_b0_parameter_fixture():
+    """Component-level parameter-interaction test (D-025 clarification 3).
+
+    Under B0 the approach distance (>= 2 points) exceeds the 0.50 clear-side
+    distance, which hides the gap-origin threshold behind the arming rule. With
+    a wide clear-side distance (2.00) and a narrow approach distance (0.50) a
+    "near-gap" close 1.00 below L neither arms nor approaches, so only the gap
+    threshold itself decides whether the next bar is a qualifying gap.
+    These values are NOT B0 values.
+    """
+    spec = copy.deepcopy(SPEC)
+    spec["level_states"]["parameters"]["rejection_close_distance_ticks"] = 8  # clear side = 2.00 points
+    params = StateParams.from_spec(spec)
+    levels = [make_level(L, LevelType.PRIOR_RTH_HIGH, START), make_level(U, LevelType.OVERNIGHT_HIGH, START, "OVERNIGHT")]
+    (cluster,) = cluster_levels(levels, Decimal("4"), START)
+    z = ZoneTracker(cluster, params, Decimal("0.5"), START)
+    run(z, bar(0, 19990.0, 19985.0, 19988.0))  # clear-side close: armed from below
+    assert z.armed_side is Origin.BELOW
+    run(z, bar(1, 19999.0, 19997.0, 19999.0))  # near-gap close L - 1.00: not <= L - 2.00, no approach
+    assert z.active_attempt is None
+    events = run(z, bar(2, 20015.0, 20010.0, 20012.0))  # low above U
+    assert E.GAPPED_ABOVE_ZONE not in events and E.ATTEMPT_STARTED not in events

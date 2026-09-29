@@ -377,5 +377,59 @@ arming rule.
    touch, breach or gap. Until then, a clear-side close on the origin side
    neither rejects nor ends the episode.
 **Reversible:** yes.
-**Status:** Model CONFIRMED by the owner (Round 9 gap resolution).
-Interpretations 1–2 PENDING.
+**Status:** CONFIRMED by the project owner on 2026-09-29, with these
+clarifications:
+1. Opposite-side arming is evaluated only after the current episode ends,
+   and the end condition "an opposite episode arms and begins" is removed.
+2. Approach-only episodes are withdrawn (`APPROACH_WITHDRAWN`, rearmed,
+   never rejected) when price returns to the origin-side threshold before a
+   touch, breach or gap.
+3. The hidden gap threshold is now covered by a non-B0 parameter-interaction
+   test (`test_gap_threshold_is_enforced_in_a_non_b0_parameter_fixture`),
+   which catches the mutation that went undetected in Round 9.
+
+## D-026 — Continuation confirmation implemented (Round 10)
+**Decision:** The owner's single B0 pattern, `PULLBACK_HOLD_CONTINUATION`,
+is implemented in `src/mnq_research/confirmation.py`:
+- An acceptance, then the first retest-hold bar, then the immediately
+  following bar closing one tick beyond the hold extreme.
+- A six-bar clock after the acceptance (the hold must come by bar 5).
+- Pre- and post-hold failure rules, and exactly one outcome per acceptance.
+- Strict identity: one `acceptance_id`, `attempt_id` and zone version per
+  sequence. Each acceptance can be used only once, which the zone records.
+
+`SetupEngine` runs a zone's state tracker and the confirmation of each new
+acceptance. The Round 9 tracker now also gives each acceptance an
+`acceptance_id`, and ends approach-only episodes as `APPROACH_WITHDRAWN`
+(D-025).
+
+New required fields: `confirmation.parameters`, `confirmation.clock` and
+`confirmation.acceptance_lifetime`. The validator checks the enumerated
+settings, that the tick distances are ≥ 1, and that `max_bars` ≥ 2. The
+plain-English guide is `docs/CONFIRMATION.md`.
+
+28 confirmation tests cover the owner's Round 10 list. Seven deliberate
+code mutations were all caught: a hold on the final bar, a hold without a
+pullback, a wick confirming, strict failure comparisons, an inclusive
+cutoff, missing bars ignored, and acceptance reuse.
+
+**Questions and choices pending owner confirmation:**
+1. **Equality conflict:** a low of exactly L − 0.25 (long), or a high of
+   exactly U + 0.25 (short), satisfies both the retest-hold limit
+   ("≥ L − 0.25", equality qualifies) and the failure rule ("at or below
+   L − 0.25"). Implemented: **failure wins**, because the hold is meant not
+   to "wick through the opposite side by one tick".
+2. **Approach withdrawal timing:** it is evaluated from the bar *after* the
+   episode's start bar. The start bar's own close is part of the approach,
+   so price hasn't "returned" yet. Because price hovering below a zone
+   repeatedly satisfies both the approach and the withdrawal conditions,
+   `attempt_id`s can increase quickly in that situation. This is harmless
+   to confirmation, but it inflates attempt counts in diagnostics.
+3. **Replay acceptances:** an acceptance reached during the 09:30–09:45
+   initialisation replay does not get a confirmation sequence. Confirmation
+   is only started for acceptances observed from 09:45 on.
+4. **Cutoff test:** the cutoff is applied to the decision bar's close. A
+   continuation bar closing at or after 11:30 is `INVALIDATED_BY_CUTOFF`.
+**Reversible:** yes.
+**Status:** Pattern and parameters CONFIRMED by the owner (Round 10).
+Items 1–4 PENDING.

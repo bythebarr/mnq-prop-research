@@ -29,6 +29,7 @@ from typing import Any
 from mnq_research.config import load_mapping
 from mnq_research.data_contracts import EXCHANGE_TIMEZONE, REQUIRED_COLUMNS
 from mnq_research.hashing import hash_object
+from mnq_research.confirmation import CONFIRMATION_TYPE, CONTINUATION_REQUIREMENT, RETEST_DISTANCE_METHOD
 from mnq_research.level_states import APPROACH_METHOD
 from mnq_research.structural_levels import B0_LEVEL_TYPES
 
@@ -137,6 +138,9 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "confirmation.definition",
     "confirmation.max_bars_after_acceptance",
     "confirmation.failure_handling",
+    "confirmation.parameters",
+    "confirmation.clock",
+    "confirmation.acceptance_lifetime",
     # Room to target
     "room_to_target.measurement_method",
     "room_to_target.minimum_room",
@@ -461,6 +465,8 @@ def check_rule_freeze(spec: Any, spec_path: str | Path | None = None) -> RuleFre
         add(problem)
     for problem in _level_state_problems(spec):
         add(problem)
+    for problem in _confirmation_problems(spec):
+        add(problem)
 
     # 3. Any other unanswered value anywhere (e.g. nested TBDs, extra fields)
     for path, value in _iter_leaves(spec, ""):
@@ -574,6 +580,38 @@ def _level_state_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
     if not is_unresolved(method) and method != APPROACH_METHOD:
         problems.append(RuleFreezeProblem(f"{base}.approach_distance_method", "INVALID", f"must be {APPROACH_METHOD!r}"))
     for name in LEVEL_STATE_INT_PARAMETERS:
+        value = params.get(name, _MISSING)
+        if value is _MISSING:
+            problems.append(RuleFreezeProblem(f"{base}.{name}", "MISSING", "required parameter is missing"))
+        elif not is_unresolved(value) and (isinstance(value, bool) or not isinstance(value, int) or value < 1):
+            problems.append(RuleFreezeProblem(f"{base}.{name}", "INVALID", f"must be a whole number >= 1, got {value!r}"))
+    return problems
+
+
+def _confirmation_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
+    problems: list[RuleFreezeProblem] = []
+    max_bars = get_path(spec, "confirmation.max_bars_after_acceptance")
+    if max_bars is not _MISSING and not is_unresolved(max_bars):
+        # A retest-hold bar plus its continuation bar need at least two slots.
+        if isinstance(max_bars, bool) or not isinstance(max_bars, int) or max_bars < 2:
+            problems.append(
+                RuleFreezeProblem("confirmation.max_bars_after_acceptance", "INVALID", f"must be a whole number >= 2, got {max_bars!r}")
+            )
+    params = get_path(spec, "confirmation.parameters")
+    if not isinstance(params, dict):
+        return problems
+    base = "confirmation.parameters"
+    for name, expected in (
+        ("confirmation_type", CONFIRMATION_TYPE),
+        ("retest_distance_method", RETEST_DISTANCE_METHOD),
+        ("continuation_bar_requirement", CONTINUATION_REQUIREMENT),
+    ):
+        value = params.get(name, _MISSING)
+        if value is _MISSING:
+            problems.append(RuleFreezeProblem(f"{base}.{name}", "MISSING", "required parameter is missing"))
+        elif not is_unresolved(value) and value != expected:
+            problems.append(RuleFreezeProblem(f"{base}.{name}", "INVALID", f"B0 implements only {expected!r}"))
+    for name in ("opposite_boundary_failure_distance_ticks", "retest_hold_close_distance_ticks", "continuation_break_distance_ticks"):
         value = params.get(name, _MISSING)
         if value is _MISSING:
             problems.append(RuleFreezeProblem(f"{base}.{name}", "MISSING", "required parameter is missing"))
