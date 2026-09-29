@@ -643,6 +643,19 @@ point in between. If there is one, the trade is skipped."
 **Question:** What exact event places a short entry order?
 **Illustrative only:** "The close of the rejection bar."
 
+### `entry_trigger.not_a_trigger`
+*(Added in D-029.)*
+**Question:** Which earlier events in the sequence must never place an order
+on their own?
+**Illustrative only:** "The touch, the breach, the first acceptance close."
+
+### `entry_trigger.terminality`
+*(Added in D-029.)*
+**Question:** How many order lifecycles can one selected candidate produce,
+and what does a later opportunity need?
+**Illustrative only:** "At most one; a later entry needs a completely fresh
+setup."
+
 ### `order_type.entry_order_type`
 **Question:** Which order type is used to enter: market, limit or
 stop-market?
@@ -714,6 +727,43 @@ halt the day."
 *(Added in Round 13.)*
 **Question:** What must exist before any live or paper order may be sent?
 **Illustrative only:** "A protective-order layer. Until then: prohibited."
+
+### `entry_order_lifecycle.acknowledgement_rules`
+*(Added in D-029.)*
+**Question:** What happens if the broker doesn't acknowledge the order in
+time, and what counts as proof that the order reached the market?
+**Illustrative only:** "Unknown after 2 s, unless an authoritative fill
+record exists."
+
+### `entry_order_lifecycle.lost_reliable_state`
+*(Added in D-029.)*
+**Question:** Which losses of order, position or account information make the
+order state unknown, and what must then happen?
+**Illustrative only:** "Connection loss or a failed query: unknown, halt,
+reconcile."
+
+### `entry_order_lifecycle.contradictory_reports`
+*(Added in D-029.)*
+**Question:** Which combinations of broker reports contradict each other?
+**Illustrative only:** "A fill after the cancellation was confirmed."
+
+### `entry_order_lifecycle.reconciliation`
+*(Added in D-029.)*
+**Question:** How is the current exposure recorded after reconciling, without
+changing what already happened?
+**Illustrative only:** "A new record: flat, open, partial or unresolved."
+
+### `entry_order_lifecycle.fill_at_or_beyond_stop`
+*(Added in D-029.)*
+**Question:** What happens if the entry fills at or beyond the structural
+stop?
+**Illustrative only:** "Emergency flatten; the stop stays unchanged."
+
+### `entry_order_lifecycle.not_submitted_effects`
+*(Added in D-029.)*
+**Question:** When an order is not submitted, when does that stop the rest of
+the day, and when may a fresh setup still trade?
+**Illustrative only:** "A news block: fresh setups later. Unknown state: halt."
 
 ### `execution_eligibility_integration.status`
 *(Added in D-028.)*
@@ -889,6 +939,18 @@ sizing formula says? It must not exceed the prop firm's limit.
 **Illustrative only:** `5`.
 
 ## 12. Daily limits, re-entry and flattening
+
+### `daily_limits.max_filled_entries_per_trading_date`
+*(Added in D-029. A candidate account-safety value, not an optimum.)*
+**Question:** How many entries may actually fill in one trading date?
+**Illustrative only:** `1`.
+
+### `daily_limits.filled_entry_allowance_rule`
+*(Added in D-029.)*
+**Question:** Which fills use up the daily allowance, and does closing the
+position give it back?
+**Illustrative only:** "Any positive fill; closing the position does not
+restore it."
 
 ### `daily_limits.max_trades_per_day`
 **Question:** What is the maximum number of trades per day? This is a hard

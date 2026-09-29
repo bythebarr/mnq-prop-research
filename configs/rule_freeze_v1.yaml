@@ -1136,8 +1136,26 @@ room_to_target:
 
 # --- Entry trigger ------------------------------------------------------------------------------------------------
 entry_trigger:
-  long_trigger: TBD
-  short_trigger: TBD
+  # D-029 decision 7 (rule owner, 2026-09-29).
+  long_trigger: >
+    A SELECTED_ENTRY_CANDIDATE with direction LONG becomes eligible for
+    one MARKET entry order created at the confirmed decision timestamp and
+    submitted exactly 1.000 second later, after all submission-time
+    eligibility checks return typed CLEAR.
+  short_trigger: >
+    A SELECTED_ENTRY_CANDIDATE with direction SHORT becomes eligible for
+    one MARKET entry order created at the confirmed decision timestamp and
+    submitted exactly 1.000 second later, after all submission-time
+    eligibility checks return typed CLEAR.
+  trigger_sequence: [structure, acceptance, pullback, hold, continuation confirmation, room qualification, deterministic candidate selection, submission-time safety checks]
+  not_a_trigger: [the touch, the breach, the first acceptance close, the second acceptance close alone, the retest alone, a wick through the hold bar, a discretionary command]
+  terminality: >
+    Each selected candidate produces at most one entry-order lifecycle: no
+    retry after rejection, no replacement after expiry, no second market
+    order after zero fill, no later entry from the same confirmation, no
+    second entry after a partial fill. A later opportunity needs a fresh
+    attempt, acceptance, confirmation and selected candidate, and remains
+    subject to daily_limits.max_filled_entries_per_trading_date.
 
 # --- Order type ----------------------------------------------------------------------------------------------------
 order_type:
@@ -1169,7 +1187,7 @@ entry_order_lifecycle:
     entry_order_type: MARKET
     signal_to_order_delay_seconds: "1.000"   # must agree with decision_clock.signal_to_order_delay
     entry_order_max_working_seconds: "2.000"
-    acknowledgement_timeout_seconds: "2.000"   # measured from submission (D-029 item to confirm)
+    order_acknowledgement_timeout_seconds: "2.000"   # D-029: measured from the authoritative submission timestamp
     research_quantity_contracts: 1
   research_quantity_labels: [RESEARCH_QUANTITY_ONLY, NOT_DEPLOYMENT_SIZING]
   creation: >
@@ -1203,13 +1221,56 @@ entry_order_lifecycle:
       query order and position; no exposure increase; protect any confirmed
       position; critical alert; halt new entries for the trading date. An
       unknown state is never assumed to be a rejection.
-    NOT_SUBMITTED_INELIGIBLE: Terminal; exact reasons recorded; candidate never reused.
+    NOT_SUBMITTED_INELIGIBLE: >
+      Terminal; exact reasons recorded; candidate never reused; no position
+      and no use of the filled-entry allowance. Effect on the date depends on
+      the reason (see not_submitted_effects).
+  # --- D-029 confirmations (rule owner, 2026-09-29) ---
+  acknowledgement_rules: >
+    No acknowledgement and no other authoritative order state within 2.000 s
+    of the authoritative submission timestamp -> ENTRY_ORDER_STATE_UNKNOWN.
+    Exception: an AUTHORITATIVE fill record proves market receipt. Fills
+    without acknowledgement -> not unknown for that reason alone; record the
+    operational anomaly ACKNOWLEDGEMENT_MISSING_BUT_FILL_CONFIRMED, continue
+    reconciliation, protect the confirmed position immediately, never
+    resubmit. A non-authoritative local fill estimate is not proof and
+    creates no exposure.
+  lost_reliable_state:
+    classification: ENTRY_ORDER_STATE_UNKNOWN
+    causes: [CONNECTION_LOSS, ORDER_QUERY_FAILURE, POSITION_QUERY_FAILURE, STALE_STATE, PLATFORM_BROKER_DISAGREEMENT, MISSING_RECONCILIATION_IDENTIFIERS]
+    fail_closed: [no duplicate entry, no replacement entry, no additional exposure, halt new entries for the date, alert and reconcile, preserve any confirmed protective order, protect any positively confirmed position]
+  contradictory_reports:
+    classification: ENTRY_ORDER_STATE_UNKNOWN (immutable historical event; never rewritten or deleted)
+    kinds: [FILLED_MORE_THAN_SUBMITTED, FILL_AFTER_CONFIRMED_CANCELLATION, REJECTION_AND_FILL_FOR_SAME_ORDER, POSITION_DIFFERS_FROM_AUTHORITATIVE_FILLS, SIDE_OR_CONTRACT_MISMATCH, INCOMPATIBLE_TERMINAL_STATES]
+    not_contradictory: A fill while cancellation is only requested or pending is a cancellation-race fill (real exposure).
+  reconciliation:
+    exposure_states: [RECONCILED_FLAT, RECONCILED_OPEN_POSITION, RECONCILED_PARTIAL_POSITION, RECONCILIATION_UNRESOLVED]
+    rules: >
+      Each reconciliation appends a new current-exposure record; the original
+      anomaly and outcome stay unchanged. A reconciled position must be
+      protected or flattened. Reconciliation never restores new-entry
+      eligibility that trading date.
+  fill_at_or_beyond_stop: >
+    Long average fill <= planned stop, or short average fill >= planned stop:
+    keep the structural stop unchanged for audit; never move it farther; place
+    no stop on the wrong side of the fill; immediately invoke emergency
+    flattening of the confirmed quantity through the emergency market-close,
+    retry and reconciliation rules; halt new entries for the date; record
+    ENTRY_FILLED_AT_OR_BEYOND_INVALIDATION and EMERGENCY_FLATTEN_REQUIRED;
+    count every fill, slippage, cost and loss. A fill on the valid side with
+    more risk than planned: keep the stop and target unchanged, protect, and
+    record the increased actual risk and degraded actual R:R.
+  not_submitted_effects:
+    temporary_known_block: Candidate terminal and not reusable; a completely fresh setup may occur after the block ends (e.g. news entry protection).
+    permanent_safety_or_conflict_halt: New entries stay halted under that governing rule.
+    unknown_eligibility_or_system_state: Halt new entries for the remainder of the date.
+    invalid_structural_stop: Halt new entries for the remainder of the date (integrity failure; D-030 item to confirm).
   cancellation_race: >
     A fill arriving after the cancellation request is real exposure: protect
     it, reconcile order and position, and make no new entry that day.
   audit: Every outcome, including every failure, produces a deterministic audit record with its reasons and timestamps.
   protective_order_dependency:
-    simulated_fill_creates: REQUIRED_PROTECTION_TASK   # quantity = confirmed filled quantity; frozen stop and target
+    simulated_fill_creates: REQUIRED_PROTECTION_TASK   # quantity = confirmed position; frozen stop and target (EMERGENCY_FLATTEN_REQUIRED if the fill is at or beyond the stop)
     protective_order_layer_status: REQUIRED_BEFORE_EXECUTABLE
     live_or_paper_order_submission: prohibited
 
@@ -1325,7 +1386,7 @@ execution_eligibility_integration:
     entry code consume directly. Only CLEAR, verified for every control,
     permits an entry. Unknown state fails closed. Free-form strings, missing
     keys, null values or default false values can never mean "safe to trade".
-  controls: [news_blackout, news_entry_protection, safety_halt, directional_conflict_halt, daily_entry_halt, session_valid, data_valid, candidate_current, no_open_position, no_working_entry_order, contract_current, zones_current]
+  controls: [news_blackout, news_entry_protection, safety_halt, directional_conflict_halt, daily_entry_halt, filled_entry_allowance_available, session_valid, data_valid, candidate_current, no_open_position, no_working_entry_order, contract_current, zones_current]
   consumers: [trade_geometry (decision time), entry_order_lifecycle (submission recheck)]
 
 # --- Position management ---------------------------------------------------------------------------------------------------
@@ -1340,18 +1401,33 @@ position_management:
   risk_per_trade:
     status: UNRESOLVED_EVIDENCE_DERIVED
     later_formula: >
-      risk_per_contract_usd = structural stop distance in points x 2.00 USD
-      per point + modelled slippage and costs; contracts = floor(allowed risk
-      USD / risk_per_contract_usd); zero contracts -> skip the trade. The stop
+      modeled_risk_per_contract_usd = structural stop distance in points x
+      2.00 USD per point + modelled slippage and costs; contracts =
+      floor(allowed_planned_account_risk_usd / modeled_risk_per_contract_usd);
+      contracts < 1 -> POSITION_SIZE_BELOW_ONE_CONTRACT, SKIP_TRADE. The stop
       is never compressed to make a contract fit.
   position_sizing_balance_basis: UNRESOLVED_PENDING_PROP_RULE_MODEL   # nominal 50,000 USD account size is NOT risk capital
-  contract_rounding: TBD   # later_formula says floor; confirm once risk_per_trade is resolved
-  below_one_contract_action: TBD   # later_formula says skip; confirm once risk_per_trade is resolved
+  # D-029 decision 6 (rule owner, 2026-09-29): mechanics frozen; dollar risk still unresolved.
+  # Implemented in src/mnq_research/sizing.py (not used by research simulation).
+  contract_rounding: FLOOR_TO_WHOLE_CONTRACT
+  below_one_contract_action: SKIP_TRADE   # records POSITION_SIZE_BELOW_ONE_CONTRACT
+  sizing_never: [round up, force one contract, compress the stop, increase the allowed risk, carry fractional contracts]
   max_contracts_per_trade: TBD
 
 # --- Maximum trades per day -------------------------------------------------------------------------------------------------
 daily_limits:
-  max_trades_per_day: TBD
+  # D-029 decision 4 (rule owner, 2026-09-29): candidate B0 account-safety
+  # parameter, NOT a claim that one trade per day is optimal.
+  max_filled_entries_per_trading_date: 1
+  filled_entry_allowance_rule: >
+    Any positive confirmed filled quantity (full fill, partial fill,
+    cancellation-race fill, fill confirmed without acknowledgement, or a
+    reconciled open position caused by the strategy entry) sets
+    daily_entry_allowance_consumed: true and the terminal daily state
+    FILLED_ENTRY_LIMIT_REACHED. It keeps blocking after the position closes.
+    Diagnostic signals may still be logged without orders; they can never
+    become B0 trades. A NOT_SUBMITTED order does not use the allowance.
+  max_trades_per_day: 1   # = max_filled_entries_per_trading_date (D-029 decision 4: no second strategy entry)
   max_losing_trades_per_day: TBD
   daily_loss_stop_usd: TBD
 
@@ -1362,9 +1438,10 @@ no_trade_conditions:
 
 # --- Re-entry policy ------------------------------------------------------------------------------------------------------------
 reentry:
-  allowed: TBD
-  conditions: TBD
-  cooldown_minutes: TBD
+  # D-029 decision 4: no re-entry after a stop, target, manual safety exit or partial fill.
+  allowed: false
+  conditions: NOT_APPLICABLE
+  cooldown_minutes: NOT_APPLICABLE
 
 # --- Session flattening ---------------------------------------------------------------------------------------------------------
 session_flattening:

@@ -65,7 +65,8 @@ described in `ORDER_LIFECYCLE.md`.
 Geometry no longer accepts a free-form list of "blocking conditions". It takes
 an `ExecutionEligibility` snapshot (`src/mnq_research/eligibility.py`), which
 has one field per control: news blackout, news protection, safety halt,
-directional-conflict halt, daily entry halt, session, data, candidate,
+directional-conflict halt, daily entry halt, filled-entry allowance (D-029),
+session, data, candidate,
 open position, working order, contract and zones.
 
 * Each field must be `ControlState.CLEAR`, `BLOCKED` or `UNKNOWN`.

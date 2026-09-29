@@ -182,6 +182,14 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "entry_order_lifecycle.outcomes",
     "entry_order_lifecycle.cancellation_race",
     "entry_order_lifecycle.protective_order_dependency",
+    "entry_order_lifecycle.acknowledgement_rules",
+    "entry_order_lifecycle.lost_reliable_state",
+    "entry_order_lifecycle.contradictory_reports",
+    "entry_order_lifecycle.reconciliation",
+    "entry_order_lifecycle.fill_at_or_beyond_stop",
+    "entry_order_lifecycle.not_submitted_effects",
+    "entry_trigger.not_a_trigger",
+    "entry_trigger.terminality",
     # Execution eligibility integration (D-028)
     "execution_eligibility_integration.status",
     "execution_eligibility_integration.requirement",
@@ -219,6 +227,8 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "position_management.below_one_contract_action",
     "position_management.max_contracts_per_trade",
     # Daily limits and re-entry
+    "daily_limits.max_filled_entries_per_trading_date",
+    "daily_limits.filled_entry_allowance_rule",
     "daily_limits.max_trades_per_day",
     "daily_limits.max_losing_trades_per_day",
     "daily_limits.daily_loss_stop_usd",
@@ -764,6 +774,7 @@ def _entry_order_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
         PROHIBITED_ENTRY_ORDER_TYPES,
         RESEARCH_QUANTITY_LABELS,
     )
+    from mnq_research.sizing import BELOW_ONE_CONTRACT_ACTION, CONTRACT_ROUNDING
 
     problems: list[RuleFreezeProblem] = []
     expectations = (
@@ -777,6 +788,11 @@ def _entry_order_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
         ("stop_placement.minimum_stop_points", "NOT_APPLICABLE"),
         ("stop_placement.maximum_stop_points", "NOT_APPLICABLE"),
         ("stop_placement.trade_skipped_if_outside_stop_limits", False),
+        ("daily_limits.max_filled_entries_per_trading_date", 1),
+        ("daily_limits.max_trades_per_day", 1),
+        ("reentry.allowed", False),
+        ("position_management.contract_rounding", CONTRACT_ROUNDING),
+        ("position_management.below_one_contract_action", BELOW_ONE_CONTRACT_ACTION),
     )
     for path, expected in expectations:
         value = get_path(spec, path)
@@ -786,7 +802,7 @@ def _entry_order_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
             problems.append(RuleFreezeProblem(path, "INVALID", f"B0 implements only {expected!r}, got {value!r}"))
     params = get_path(spec, "entry_order_lifecycle.parameters")
     if isinstance(params, dict):
-        for name in ("signal_to_order_delay_seconds", "entry_order_max_working_seconds", "acknowledgement_timeout_seconds"):
+        for name in ("signal_to_order_delay_seconds", "entry_order_max_working_seconds", "order_acknowledgement_timeout_seconds"):
             path = f"entry_order_lifecycle.parameters.{name}"
             value = params.get(name, _MISSING)
             if value is _MISSING:

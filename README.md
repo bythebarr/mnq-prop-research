@@ -131,6 +131,7 @@ mnq-prop-research/
 │   ├── trade_geometry.py      ← Round 12 planned entry/stop/target and selection (component only)
 │   ├── eligibility.py         ← D-028 typed, fail-closed eligibility controls
 │   ├── entry_order.py         ← Round 13 simulated market entry-order lifecycle (no broker)
+│   ├── sizing.py              ← D-029 floor/skip sizing mechanics (dollar risk unresolved)
 │   ├── level_states.py        ← Round 9 zone interaction states (component only)
 │   ├── structural_levels.py   ← Round 8 level rules (component only; not a backtest)
 │   └── synthetic_data.py      ← FAKE data for software tests only

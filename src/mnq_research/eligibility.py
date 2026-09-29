@@ -42,6 +42,7 @@ class ExecutionEligibility:
     safety_halt: ControlState
     directional_conflict_halt: ControlState
     daily_entry_halt: ControlState  # e.g. set by an entry-order outcome (Round 13)
+    filled_entry_allowance_available: ControlState  # D-029: one filled entry per trading date
     session_valid: ControlState  # eligible date, inside the entry window, session not invalidated
     data_valid: ControlState  # no missing/incomplete/unreliable market data
     candidate_current: ControlState  # candidate not expired, not already used

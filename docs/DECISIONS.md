@@ -616,33 +616,85 @@ and 3 D-028 tests. In the mutation checks, 3 of 30 mutations first survived:
 
 Tests were added for each, and all 30 are now caught.
 
-**Pending owner confirmation:**
-1. **Acknowledgement timeout.** It is recorded as its own parameter
-   (`acknowledgement_timeout_seconds: "2.000"`), measured from submission, so
-   it coincides with the working deadline. A fill counts as proof that the
-   order reached the market, so a filled but unacknowledged order is not
-   "unknown". Is that right?
-2. **Loss of reliable state.** Besides ending the working time, it is also
-   treated as `ENTRY_ORDER_STATE_UNKNOWN` (reconcile, alert, halt).
-3. **Contradictory reports** (overfill, fill after the final state, a
-   rejection after a fill, a reconciled position that differs from the
-   recorded fills) become `ENTRY_ORDER_STATE_UNKNOWN`. That outcome is never
-   later replaced by a cleaner one.
-4. **Halting.** A full fill does not halt the day. The open position blocks
-   new entries, through `no_open_position`, until trade management exists.
-   A `NOT_SUBMITTED_INELIGIBLE` order does not halt the day either (your
-   rule said only "terminal").
-5. **Stop beyond the actual fill.** If the actual fill is at or beyond the
-   frozen stop, the stop is kept unchanged and the protection task is
-   flagged `stop_protective_of_actual_entry: false`. What should happen next
-   (an immediate flatten?) belongs to the protection and trade-management
-   round.
-6. **Floor and skip.** `contract_rounding` and `below_one_contract_action`
-   stay TBD, even though your later formula says floor and skip. They should
-   be confirmed together with `risk_per_trade`.
-7. **`entry_trigger.long_trigger` / `short_trigger`** are still TBD. Rounds
-   11–13 seem to answer them ("a SELECTED_ENTRY_CANDIDATE → market order at
-   decision + 1.000 s"), but I have not filled them in without your
-   confirmation.
+**Items raised for confirmation:** the acknowledgement timeout, lost
+state, contradictory reports, which outcomes halt, a fill beyond the stop,
+floor/skip, and the entry triggers.
 **Reversible:** yes.
-**Status:** Rules CONFIRMED by the owner (Round 13). Items 1–7 PENDING.
+**Status:** CONFIRMED by the owner with modifications (2026-09-29). See
+D-030.
+
+## D-030 — D-029 confirmations: acknowledgement, unknown state, daily limit, triggers
+**Decision (rule owner, 2026-09-29):**
+1. **Acknowledgement.** `order_acknowledgement_timeout_seconds: "2.000"`,
+   measured from the submission timestamp. No acknowledgement and no other
+   authoritative state within that time → UNKNOWN. An authoritative fill
+   proves market receipt; the anomaly
+   `ACKNOWLEDGEMENT_MISSING_BUT_FILL_CONFIRMED` is recorded, reconciliation
+   continues, the position is protected, and nothing is resubmitted. A local
+   fill estimate is not proof.
+2. **Lost reliable state** (six named causes) → UNKNOWN, failing closed.
+3. **Contradictory reports** (six kinds) → UNKNOWN, as an immutable
+   historical event. Reconciliation appends separate current-exposure
+   records (FLAT / OPEN / PARTIAL / UNRESOLVED) and never restores entry
+   eligibility. A fill while cancellation is pending is a race fill; a fill
+   after a confirmed cancellation is a contradiction.
+4. **Daily limit.** `max_filled_entries_per_trading_date: 1` (a candidate
+   safety value). Any positive confirmed fill consumes the allowance, giving
+   `FILLED_ENTRY_LIMIT_REACHED`. It stays consumed after the position
+   closes, and there is no re-entry. A NOT_SUBMITTED order does not consume
+   it; whether it halts depends on the reason, and UNKNOWN eligibility halts.
+5. **Fill at or beyond the stop** → emergency flatten of the confirmed
+   quantity, and halt. The stop is unchanged and never widened. A worse but
+   valid fill keeps the stop and target and records the degraded actual R:R.
+6. **Sizing mechanics.** `contract_rounding: FLOOR_TO_WHOLE_CONTRACT`,
+   `below_one_contract_action: SKIP_TRADE` (`POSITION_SIZE_BELOW_ONE_CONTRACT`).
+   The dollar risk and its balance basis stay unresolved.
+7. **Entry triggers.** A LONG or SHORT `SELECTED_ENTRY_CANDIDATE` gives one
+   MARKET order, created at the decision time and submitted 1.000 s later
+   once every check is typed CLEAR. Each candidate gets at most one
+   lifecycle.
+
+**Implementation:**
+- `entry_order.py`:
+  - Fills carry a required `FillSource`.
+  - New `on_state_lost(StateLossCause)`,
+    `report_contradiction(Contradiction)` and
+    `reconcile(qty | None, side, contract)`.
+  - Immutable `OperationalAnomaly` and `ReconciliationRecord` histories, and
+    `current_exposure`.
+  - Emergency-flatten detection; `actual_risk_exceeds_planned` and
+    `actual_gross_rr_to_frozen_target`.
+  - `EntryOrderBook` now enforces the filled-entry allowance
+    (`daily_state`, `record_position_flat`).
+- `eligibility.py`: new control `filled_entry_allowance_available`.
+- New `sizing.py`: floor and skip, exact decimals only.
+- Spec: `entry_trigger` is filled; new lifecycle sections; `daily_limits`.
+  The validator enforces the frozen values.
+
+**Also filled, because D-029 decision 4 states them directly** (please
+confirm):
+- `daily_limits.max_trades_per_day: 1`;
+- `reentry.allowed: false`, with conditions and cooldown `NOT_APPLICABLE`.
+
+**Testing:** 19 new D-029 tests, 233 in total. Of 35 mutation checks, 3
+survived at first:
+- a re-finalised terminal timestamp;
+- the sizing type guard;
+- the re-entry validator.
+
+Tests were added for each, and all are now caught.
+
+**Pending owner confirmation:**
+1. `max_trades_per_day: 1` and `reentry.allowed: false`, as above.
+2. **An invalid structural stop halts the day.** A stop failing its
+   integrity checks means NOT_SUBMITTED plus a halt, treated like an unknown
+   system state. This was my choice; you did not specify it.
+3. **State loss after a clean fill.** Losing reliable state even after a
+   full fill reclassifies the lifecycle as UNKNOWN (fail closed). The fill,
+   the earlier outcome (in the anomaly detail) and the protection task are
+   kept.
+4. **Emergency-flatten trigger is sticky.** Once the average fill is at or
+   beyond the stop, the requirement stays even if later fills (possible only
+   with quantity > 1) move the average back.
+**Reversible:** yes.
+**Status:** CONFIRMED (D-029 decisions 1–7). Items 1–4 PENDING.

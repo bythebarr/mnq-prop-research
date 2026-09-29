@@ -1,4 +1,4 @@
-# Order Lifecycle: from a selected candidate to a filled (or not) entry (Round 13)
+# Order Lifecycle: from a selected candidate to a filled (or not) entry (Round 13, D-029)
 
 Plain-English companion to `configs/rule_freeze_v1.yaml`
 (`entry_order_lifecycle`, `order_type`, `order_validity`, `stop_placement`,
@@ -11,6 +11,23 @@ and the tests are `tests/test_entry_order.py`.
 > protective-order layer exists. This round does **not** do position sizing,
 > commissions, protective stop/target orders, trade management, prop-account
 > simulation or backtesting.
+
+## What triggers an order (D-029)
+
+The trigger is **only** a `SELECTED_ENTRY_CANDIDATE`: the end of the whole
+frozen sequence.
+
+    structure → acceptance → pullback → hold → continuation confirmation
+      → room qualification → deterministic selection → submission-time safety checks
+
+A touch, a breach, an acceptance close, a retest, a wick through the hold bar
+or a discretionary command never places an order on its own.
+
+Each selected candidate gets **at most one** order lifecycle. There is no
+retry after a rejection, no replacement after expiry, no second order after a
+zero fill, and no top-up after a partial fill. A later entry needs a
+completely fresh attempt, acceptance, confirmation and selection. It is also
+subject to the one-filled-entry daily limit.
 
 ## The timeline
 
@@ -58,25 +75,92 @@ and the candidate is used up.
 
 | Outcome | What happens | Halts the day? |
 |---|---|---|
-| ENTRY_FULLY_FILLED | average fill, each fill, slippage vs the confirmation close and vs the planned entry, and latency to first and to final fill are recorded | no, but the open position blocks new entries |
+| ENTRY_FULLY_FILLED | average fill, each fill, slippage vs the confirmation close and vs the planned entry, and latency to first and to final fill are recorded | uses the day's one filled entry (see below) |
 | ENTRY_PARTIALLY_FILLED | the filled part is kept and protected; the rest is cancelled; never topped up; stop and target unchanged | **yes** |
 | ENTRY_NOT_FILLED | no position; candidate used up | **yes** |
 | ENTRY_ORDER_REJECTED | code and message recorded; no retry, no other order type | **yes** |
 | ENTRY_ORDER_STATE_UNKNOWN | never resubmit or replace; query order and position; no added exposure; protect what is confirmed; critical alert | **yes** |
-| NOT_SUBMITTED_INELIGIBLE | exact reasons recorded; candidate used up | no |
+| NOT_SUBMITTED_INELIGIBLE | exact reasons recorded; candidate used up; no position, so the filled-entry allowance is **not** used | depends on the reason (below) |
 
-**The unknown state** arises from any of these:
-* no acknowledgement (and no fill) within 2.000 s;
-* loss of reliable state;
-* contradictory reports: an overfill, a fill after the final state, a
-  rejection after a fill, or a reconciled position that differs from the
-  recorded fills.
+**When a NOT_SUBMITTED order stops the day:**
 
-It is never assumed to be a rejection, and it is never silently replaced by
-a cleaner outcome.
+| Reason | Effect on the rest of the day |
+|---|---|
+| A temporary, known block (e.g. news entry protection) | none; a completely fresh setup may trade after the block ends |
+| A permanent safety halt or directional conflict | the day is already halted by that rule |
+| Any `UNKNOWN` eligibility or system state | **halt** for the rest of the date |
+| A stop that fails its integrity checks | **halt** (integrity failure; awaiting your confirmation) |
 
-**Cancellation race:** a fill that arrives after the cancel request is real
-exposure. It is protected and reconciled, and there is no new entry that day.
+### Acknowledgement (D-029 decision 1)
+
+The broker must acknowledge the order, or report some other authoritative
+state such as a rejection, within **2.000 s of the submission timestamp**.
+Otherwise the lifecycle is `ENTRY_ORDER_STATE_UNKNOWN`.
+
+The exception is an **authoritative fill record**, which proves that the
+order reached the market. The lifecycle is then not "unknown" for that
+reason alone. Instead:
+* the anomaly `ACKNOWLEDGEMENT_MISSING_BUT_FILL_CONFIRMED` is recorded;
+* reconciliation continues;
+* the confirmed position is protected;
+* nothing is resubmitted.
+
+A **local fill estimate** is not proof. It creates no exposure and is kept
+only as a diagnostic. Every fill must carry its source (`FillSource`); an
+unlabelled fill is refused.
+
+### The unknown state (D-029 decisions 2 and 3)
+
+Any of these makes the lifecycle `ENTRY_ORDER_STATE_UNKNOWN`:
+* no acknowledgement or authoritative state within 2.000 s;
+* **lost reliable state**: connection loss, an order-query failure, a
+  position-query failure, stale state, platform and broker disagreeing, or
+  missing identifiers needed to reconcile;
+* **contradictory reports**:
+  * filled more than submitted;
+  * a fill after the cancellation was *confirmed*;
+  * a rejection and a fill for the same order;
+  * a broker position that differs from the authoritative fills;
+  * a side or contract mismatch between linked records;
+  * incompatible terminal states, such as "filled" and then "cancelled".
+
+In the unknown state, fail closed: no duplicate or replacement entry, no
+added exposure, halt for the date, alert and reconcile, keep any confirmed
+protective order, and protect any confirmed position.
+
+**History never changes.** The UNKNOWN event is an immutable
+`OperationalAnomaly`, and it is never rewritten or deleted.
+
+**Reconciliation** adds a *new* current-exposure record, which is one of:
+* `RECONCILED_FLAT`
+* `RECONCILED_OPEN_POSITION`
+* `RECONCILED_PARTIAL_POSITION`
+* `RECONCILIATION_UNRESOLVED`
+
+A reconciled position must be protected or flattened. Reconciliation never
+gives back the day's ability to enter.
+
+**Cancellation race:** a fill that arrives while the cancellation is only
+*requested* is not a contradiction. It is a race fill: real exposure,
+protected and reconciled, and no new entry that day. A fill after the
+cancellation was *confirmed* is a contradiction (see above).
+
+## One filled entry per day (D-029 decision 4)
+
+`max_filled_entries_per_trading_date: 1` is a candidate B0 account-safety
+value, not a claim that one trade a day is best.
+
+Any positive confirmed fill uses up the day's allowance. That includes:
+* a full fill;
+* a partial fill;
+* a race fill;
+* a fill confirmed without acknowledgement;
+* a reconciled open position.
+
+The daily state then becomes `FILLED_ENTRY_LIMIT_REACHED`. The open position
+blocks entries while it is open. **Closing it does not give the allowance
+back**: there is no second entry and no re-entry that date. Later signals
+may still be logged as diagnostics, but they can never become B0 trades.
 
 ## Actual numbers, not planned ones
 
@@ -99,9 +183,22 @@ risk is 11.50 points, not 10.50. A target at 20026.00 is then worth about
 * The stop must be positive, finite, on the tick grid, from the originating
   zone, and on the protective side of the planned entry. Otherwise the order
   is not submitted.
-* The stop is **never** resized, compressed or recalculated. If a fill lands
-  at or beyond the stop, the protection task is flagged
-  `stop_protective_of_actual_entry: false` and the stop stays where it was.
+* The stop is **never** resized, compressed, widened or recalculated.
+* **Fill at or beyond the stop (D-029 decision 5).** This means a long
+  average fill ≤ the stop, or a short average fill ≥ the stop. The position
+  is never left unprotected on purpose, and no stop is placed on the wrong
+  side of the fill. Instead:
+  * `ENTRY_FILLED_AT_OR_BEYOND_INVALIDATION` and `EMERGENCY_FLATTEN_REQUIRED`
+    are recorded;
+  * the confirmed quantity must be flattened immediately, using the
+    emergency market-close, retry and reconciliation rules;
+  * the day halts;
+  * the original stop is kept unchanged for the audit;
+  * every fill, slippage, cost and loss still counts, and the trade is never
+    treated as if it hadn't happened.
+* **Fill on the valid side but worse than planned.** The stop and target stay
+  exactly where they were. The larger actual risk and the lower actual R:R
+  are recorded, and nothing is widened to "restore" the planned 1.50R.
 
 ## Quantity and risk
 
@@ -109,12 +206,17 @@ risk is 11.50 points, not 10.50. A target at 20026.00 is then worth about
   `NOT_DEPLOYMENT_SIZING`. It exists so the lifecycle can be tested. It is
   not a sizing decision. (With 1 contract a partial fill cannot happen; the
   partial-fill rules are tested with a larger test-only quantity.)
-* `risk_per_trade` is deliberately **unresolved** until evidence exists. The
-  later formula:
-  * risk per contract = stop points × $2 + modelled slippage and costs;
-  * contracts = floor(allowed risk ÷ risk per contract);
-  * zero contracts → skip;
-  * never compress the stop.
+* `risk_per_trade` is deliberately **unresolved** until evidence exists.
+* **The sizing mechanics are frozen (D-029 decision 6)**, in
+  `src/mnq_research/sizing.py`:
+  * contracts = floor(allowed planned account risk ÷ modelled risk per
+    contract);
+  * fewer than 1 → `POSITION_SIZE_BELOW_ONE_CONTRACT`, `SKIP_TRADE`;
+  * never round up, force one contract, compress the stop, raise the allowed
+    risk, or use fractional contracts.
+
+  Only exact decimals are accepted. Nothing calls this yet, because the
+  dollar risk and its balance basis are still unresolved.
 * The **nominal $50,000 account size is not risk capital**. The balance
   basis waits for the prop-rule model.
 
