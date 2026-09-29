@@ -488,5 +488,61 @@ tests and fixed.
 4. **Withdrawal timing:** an approach can't be withdrawn on the same bar it
    started (carried over from D-026 item 2).
 **Reversible:** yes.
-**Status:** Rules CONFIRMED by the owner (Round 11 and D-026 amendments).
-Items 1–4 PENDING.
+**Status:** CONFIRMED by the project owner on 2026-09-29, with these
+clarifications:
+1. Prior-day and overnight zones take one pre-open arming observation from
+   the 09:25–09:30 bar, and nothing else from it. The earliest replay
+   acceptance is 09:40.
+2. Attempts start only on an armed touch or a qualifying gap; breaches are
+   recorded only inside attempts.
+3. A pre-09:45 conflict halts the day.
+4. Same-bar withdrawal stays prohibited.
+
+## D-028 — Trade geometry and candidate selection (Round 12)
+**Decision:**
+- **D-027 implementation:** `apply_pre_open_arming` uses the completed bar
+  ending at 09:30 only for arming (new parameter
+  `level_states.parameters.pre_open_arming_lookback_bars: 1`; the validator
+  allows 0 or 1). A missing or incomplete bar leaves the zone unarmed and is
+  recorded as `PRE_OPEN_ARMING_UNAVAILABLE`. Opening-range zones are never
+  pre-armed.
+- **Round 12:** `trade_geometry.py` computes the planned entry (confirmation
+  close ± 1 adverse tick), the structural stop (one tick beyond the far side
+  of the origin zone, never compressed), the nearest distinct opposing zone,
+  the target (one tick before it) and the exact gross R:R (a `Fraction`;
+  ≥ 1.50 qualifies).
+- **Selection:** highest R:R, then smallest risk, then greatest reward. An
+  exact tie means no trade at that timestamp only.
+- The selected candidate carries every identifier and price, plus the spec
+  version and hash. There are no orders, sizes, fills or costs; the cost
+  fields are reserved.
+- Confirmations now expose `confirmation_close` and `confirmation_id`.
+  Direction candidates carry the origin zone's boundaries. Zones have an
+  `expired` flag.
+- `minimum_planned_gross_rr` is written in quotes in the YAML (`"1.50"`) so
+  it parses as an exact decimal.
+- New required fields: eight `trade_geometry.*` fields. The validator
+  enforces the ranking, the tie action, non-negative buffers and a positive
+  minimum R:R. Plain English is in `docs/TRADE_GEOMETRY.md`.
+
+**Testing:** 19 geometry tests and 8 D-027 tests. Of the mutation checks,
+the first run left two weak tests undetected: a zone exactly at the entry,
+and a secondary-ranking test whose candidates actually differed in R:R. Both
+tests were fixed, and all mutations are now caught.
+
+**Pending owner confirmation:**
+1. **The tertiary ranking criterion is mathematically unreachable.** With
+   equal R:R and equal risk, reward is equal too (reward = R:R × risk), so
+   "greatest reward" can never break a tie. Is that acceptable, or should
+   the order of the criteria change?
+2. **Losers of a selection:** lower-ranked, non-tied candidates are marked
+   non-executable (`NON_EXECUTABLE_NOT_SELECTED`), so they aren't
+   reconsidered at a later timestamp.
+3. **Blocking conditions:** blackout, news entry-protection and safety
+   halts are passed in as named conditions. The logic that derives them
+   from the news calendar is not built yet.
+4. **Target zones must already exist at the decision time.** For example,
+   an opening-range zone can be a target only from 09:45.
+**Reversible:** yes.
+**Status:** Rules CONFIRMED by the owner (Round 12 and D-027). Items 1–4
+PENDING.

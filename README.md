@@ -107,6 +107,7 @@ mnq-prop-research/
 │   ├── LEVEL_STATES.md        ← plain-English zone state rules
 │   ├── CONFIRMATION.md        ← plain-English confirmation rules
 │   ├── DIRECTION.md           ← plain-English direction rules
+│   ├── TRADE_GEOMETRY.md      ← plain-English geometry and selection rules
 │   └── DECISIONS.md           ← architecture decisions and rationale
 ├── data/                      ← NOT committed to Git (except placeholders)
 │   ├── raw/                   ← vendor files exactly as received
@@ -126,6 +127,7 @@ mnq-prop-research/
 │   ├── experiment_registry.py ← pre-registration of experiments
 │   ├── confirmation.py        ← Round 10 continuation confirmation (component only)
 │   ├── direction.py           ← Round 11 event-derived direction and conflicts (component only)
+│   ├── trade_geometry.py      ← Round 12 planned entry/stop/target and selection (component only)
 │   ├── level_states.py        ← Round 9 zone interaction states (component only)
 │   ├── structural_levels.py   ← Round 8 level rules (component only; not a backtest)
 │   └── synthetic_data.py      ← FAKE data for software tests only

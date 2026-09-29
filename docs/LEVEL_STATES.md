@@ -97,6 +97,12 @@ by a later bar. Touching the zone again isn't enough.
 
 ## 5. Start of day
 
+* **Pre-open arming (D-027):** prior-day and overnight zones may be *armed*
+  by the completed 09:25–09:30 bar: a close ≤ L − 0.50 arms from below, and a
+  close ≥ U + 0.50 arms from above. That bar is used for nothing else. If it
+  is missing or incomplete, the zone starts unarmed. The earliest replay
+  acceptance is therefore 09:40.
+
 * **Prior-day and overnight zones** exist at 09:30. The three bars
   09:30–09:45 are replayed under the full rules (arming, attempts,
   acceptance and rejection are all possible). The replay events are marked

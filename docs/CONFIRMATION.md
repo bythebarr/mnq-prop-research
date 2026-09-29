@@ -82,6 +82,7 @@ six-bar clock. Every confirmation event carries exactly one
    closing at 11:30 is invalidated; one closing at 11:25 may proceed to the
    entry round.
 
-**Note on timing.** A zone is initialised at 09:30 with no arm. It needs an
-arming bar, then an interaction bar, then a second acceptance close, so the
-earliest possible replay acceptance closes at **09:45** (D-027).
+**Note on timing (D-027).** Prior-day and overnight zones may be *armed* by
+the 09:25–09:30 bar. That bar does nothing else. The 09:30–09:35 bar can then
+start the interaction and give acceptance close 1, and the 09:35–09:40 bar can
+give close 2. So the earliest possible replay acceptance is **09:40**.

@@ -707,6 +707,46 @@ the trade skipped, or is the stop clipped?
 **Question:** What exact numbers does the target method use?
 **Illustrative only:** `{risk_multiple: 1.5}`.
 
+### `trade_geometry.parameters`
+*(Added in Round 12.)*
+**Question:** Which buffers (in ticks), which minimum gross reward-to-risk, which ranking and which tie action define the planning geometry?
+**Illustrative only:** `minimum_planned_gross_rr: "1.50"`.
+
+### `trade_geometry.planned_entry_reference`
+*(Added in Round 12.)*
+**Question:** Which price is used as the *planned* entry for geometry, given that the real order fills later?
+**Illustrative only:** "Confirmation close plus one adverse tick."
+
+### `trade_geometry.geometry`
+*(Added in Round 12.)*
+**Question:** How are planned risk, reward and reward-to-risk computed, and what makes them invalid?
+**Illustrative only:** "Risk = entry to stop; invalid if ≤ 0."
+
+### `trade_geometry.target_zone_selection`
+*(Added in Round 12.)*
+**Question:** Which zone becomes the target, and which zones are excluded?
+**Illustrative only:** "The nearest distinct active zone ahead."
+
+### `trade_geometry.cost_treatment`
+*(Added in Round 12.)*
+**Question:** How do costs affect the stop, target and ratio at this stage?
+**Illustrative only:** "Not at all yet. The fields are reserved."
+
+### `trade_geometry.candidate_eligibility`
+*(Added in Round 12.)*
+**Question:** What complete list of conditions must a candidate meet to advance?
+**Illustrative only:** "Matching IDs, no halt, R:R ≥ 1.50, …"
+
+### `trade_geometry.candidate_selection`
+*(Added in Round 12.)*
+**Question:** How is one candidate chosen among several same-direction ones, and what happens on an exact tie?
+**Illustrative only:** "Rank by R:R, then risk, then reward. A tie means no trade."
+
+### `trade_geometry.selected_candidate_record`
+*(Added in Round 12.)*
+**Question:** Which identifiers and prices must the selected candidate carry?
+**Illustrative only:** "All IDs, the planned prices, and the spec version and hash."
+
 ### `position_management.contracts_per_trade`
 **Question:** How many MNQ contracts are used per trade?
 **Illustrative only:** `1`.

@@ -47,7 +47,8 @@ the result is `NO_TRADE_DIRECTIONAL_CONFLICT`:
 They are all recorded as candidates and marked `requires_selection`. Nothing
 is chosen yet; the entry and room-to-target round decides.
 
-## Open item (D-027)
+## Confirmed (D-027)
 
 A conflict made up of confirmations completing *before* 09:45 also halts the
-day. This was implemented conservatively.
+day. The reason is structural ambiguity, not whether an order would have been
+allowed.

@@ -70,6 +70,7 @@ class ZoneState(str, Enum):
 class ZoneEventType(str, Enum):
     ZONE_INITIALIZED = "ZONE_INITIALIZED"
     ZONE_SUPERSEDED = "ZONE_SUPERSEDED"
+    PRE_OPEN_ARMING_UNAVAILABLE = "PRE_OPEN_ARMING_UNAVAILABLE"
     ARMED_FROM_BELOW = "ARMED_FROM_BELOW"
     ARMED_FROM_ABOVE = "ARMED_FROM_ABOVE"
     APPROACH_SEQUENCE_STARTED = "APPROACH_SEQUENCE_STARTED"
@@ -171,6 +172,7 @@ class StateParams:
     acceptance_consecutive_closes: int
     rejection_close_distance_ticks: int
     rejection_window_complete_bars: int
+    pre_open_arming_lookback_bars: int = 0
 
     @classmethod
     def from_spec(cls, spec: Mapping[str, Any]) -> "StateParams":
@@ -182,9 +184,12 @@ class StateParams:
             p["acceptance_consecutive_closes"],
             p["rejection_close_distance_ticks"],
             p["rejection_window_complete_bars"],
+            p.get("pre_open_arming_lookback_bars", 0),
         )
         if params.approach_distance_method != APPROACH_METHOD:
             raise ValueError(f"unsupported approach_distance_method {params.approach_distance_method!r}")
+        if params.pre_open_arming_lookback_bars not in (0, 1):
+            raise ValueError("only a pre-open arming lookback of 0 or 1 bar is implemented (D-027)")
         return params
 
     @property
@@ -278,6 +283,7 @@ class ZoneTracker:
         self.predecessor_cluster_ids = predecessor_cluster_ids
         self.parent_constituent_types = cluster.constituent_level_types
         self.superseded_by: str | None = None
+        self.expired = False
         self.attempts: list[Attempt] = []
         self.approaches: list[ApproachSequence] = []
         # Acceptances that already have a confirmation sequence (each may be used once).
@@ -416,8 +422,32 @@ class ZoneTracker:
         return self._record(events + self._end_attempt(when_utc, AttemptStatus.ENDED_TRADING_WINDOW, False))
 
     def expire(self, when_utc: pd.Timestamp) -> tuple[ZoneEvent, ...]:
+        self.expired = True
         events = self._end_approach(when_utc, ApproachStatus.APPROACH_INVALIDATED, False, "ZONE_EXPIRED")
         return self._record(events + self._end_attempt(when_utc, AttemptStatus.ENDED_ZONE_EXPIRED, False))
+
+    def apply_pre_open_arming(self, bar: DecisionBar | None) -> tuple[ZoneEvent, ...]:
+        """D-027: the completed bar ending exactly at initialisation may ARM the zone.
+
+        It is used for nothing else: no approach, touch, breach, gap, rejection,
+        acceptance or confirmation, and its close is not a gap origin. A missing,
+        incomplete or blackout-affected bar leaves the zone unarmed.
+        """
+        if self.params.pre_open_arming_lookback_bars == 0 or self._history[1:]:
+            return ()
+        if bar is None or not bar.complete or bar.overlaps_blackout or bar.end_utc != self.initialized_at_utc:
+            return self._record([ZoneEvent(self.initialized_at_utc, ZoneEventType.PRE_OPEN_ARMING_UNAVAILABLE, True)])
+        close = _d(bar.close)
+        clear = self.params.clear_side_points
+        if close <= self.lower - clear:
+            side, kind = Origin.BELOW, ZoneEventType.ARMED_FROM_BELOW
+        elif close >= self.upper + clear:
+            side, kind = Origin.ABOVE, ZoneEventType.ARMED_FROM_ABOVE
+        else:
+            return ()
+        self.armed_side, self.armed_timestamp, self.armed_close = side, bar.end_utc, close
+        self.current_state = ZoneState.ARMED_FROM_BELOW if side is Origin.BELOW else ZoneState.ARMED_FROM_ABOVE
+        return self._record([ZoneEvent(bar.end_utc, kind, True, "PRE_OPEN_ARMING")])
 
     def supersede(self, when_utc: pd.Timestamp, successor_id: str) -> None:
         self.superseded_by = successor_id
@@ -483,10 +513,9 @@ class ZoneTracker:
         # --- Attempt start (D-026): only on actual interaction -----------------
         # Needs arming from an EARLIER bar and a touch, a breach in the armed
         # direction, or a qualifying gap. An approach alone never starts one.
-        # A directional breach always includes a touch unless the bar jumped the
-        # whole zone, and a jump starts an attempt only if it is a QUALIFYING
-        # gap (clear-side origin); otherwise the gap threshold would be bypassed
-        # (D-027 interpretation, pending owner confirmation).
+        # CONFIRMED (D-027): only a touch by an appropriately armed process or a
+        # qualifying gap starts an attempt. A breach is recorded only inside an
+        # existing attempt; a non-qualifying jump over the zone starts nothing.
         closing: list[ZoneEvent] = []
         start: Direction | None = None
         if self._attempt is None and self.armed_side is Origin.BELOW and (touched or gap_above):
@@ -623,15 +652,25 @@ class PreOpenZones:
     trackers: dict[str, ZoneTracker]
 
 
-def build_pre_open_zones(daily: DailyLevelSet, params: StateParams) -> PreOpenZones | None:
-    """Zones of prior-RTH/overnight levels, existing from 09:30 (None if no tolerance)."""
+def build_pre_open_zones(
+    daily: DailyLevelSet, params: StateParams, bars: Iterable[DecisionBar] = ()
+) -> PreOpenZones | None:
+    """Zones of prior-RTH/overnight levels, existing from 09:30 (None if no tolerance).
+
+    Each zone may take its initial arming from the completed decision bar that
+    ends exactly at 09:30 (D-027: the 09:25-09:30 bar); nothing else from it.
+    """
     tolerance = daily.proximity_tolerance_points
     if tolerance is None:
         return None
     t_open = ny_time(daily.trade_date, RTH_OPEN_NY)
     pre_levels = [lv for lv in daily.available_levels(t_open) if lv.level_type not in OPENING_RANGE_TYPES]
     clusters = cluster_levels(pre_levels, tolerance, t_open, label="PRE0930-")
-    return PreOpenZones(clusters, {c.cluster_id: ZoneTracker(c, params, tolerance, t_open) for c in clusters})
+    trackers = {c.cluster_id: ZoneTracker(c, params, tolerance, t_open) for c in clusters}
+    arming_bar = next((b for b in bars if b.end_utc == t_open), None)
+    for tracker in trackers.values():
+        tracker.apply_pre_open_arming(arming_bar)
+    return PreOpenZones(clusters, trackers)
 
 
 def replay_bars(daily: DailyLevelSet, bars: Iterable[DecisionBar]) -> list[DecisionBar]:
@@ -671,7 +710,8 @@ def initialize_zones(daily: DailyLevelSet, pre_open_bars: Iterable[DecisionBar],
     2. At 09:45 the full level set (including the opening range) is clustered
        again (``version_zones_at_0945``).
     """
-    pre = build_pre_open_zones(daily, params)
+    pre_open_bars = list(pre_open_bars)
+    pre = build_pre_open_zones(daily, params, pre_open_bars)
     if pre is None:
         return ZoneBook({}, {}, "PROXIMITY_TOLERANCE_UNAVAILABLE")
     for bar in replay_bars(daily, pre_open_bars):

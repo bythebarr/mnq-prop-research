@@ -180,6 +180,7 @@ class ConfirmationSequence:
         self.cutoff_utc = ny_time(acceptance.timestamp_utc.tz_convert(NEW_YORK).date(), NEW_ENTRY_CUTOFF_NY)
         self.hold: RetestHold | None = None
         self.outcome: ConfirmationOutcome | None = None
+        self.confirmation_close: Decimal | None = None  # the continuation bar's close, once CONFIRMED
         self._last_bar_end = acceptance.timestamp_utc
         self._events: list[ConfirmationEvent] = [self._event(acceptance.timestamp_utc, ConfirmationEventType.CONFIRMATION_SEQUENCE_STARTED, 0)]
 
@@ -187,6 +188,11 @@ class ConfirmationSequence:
     @property
     def events(self) -> tuple[ConfirmationEvent, ...]:
         return tuple(self._events)
+
+    @property
+    def confirmation_id(self) -> str:
+        """One confirmation per acceptance, so its id derives from the acceptance id."""
+        return f"{self.acceptance_id}:CONF"
 
     @property
     def is_pending(self) -> bool:
@@ -273,8 +279,10 @@ class ConfirmationSequence:
         if through_opposite:
             return self._finish(bar.end_utc, ConfirmationOutcome.FAILED, failed_after, index, "WICK_THROUGH_OPPOSITE_BOUNDARY")
         if long and close >= self.hold.high + p.continuation_points:
+            self.confirmation_close = close
             return self._finish(bar.end_utc, ConfirmationOutcome.CONFIRMED, ConfirmationEventType.CONFIRMED_LONG_CONTINUATION, index)
         if not long and close <= self.hold.low - p.continuation_points:
+            self.confirmation_close = close
             return self._finish(bar.end_utc, ConfirmationOutcome.CONFIRMED, ConfirmationEventType.CONFIRMED_SHORT_CONTINUATION, index)
         return self._finish(bar.end_utc, ConfirmationOutcome.FAILED, failed_after, index, "CONTINUATION_CLOSE_NOT_BEYOND_HOLD_EXTREME")
 
@@ -334,7 +342,8 @@ def initialize_engines(
     Whether a confirmation is executable (not before 09:45) is decided by the
     direction layer, not here.
     """
-    pre = build_pre_open_zones(daily, state_params)
+    pre_open_bars = list(pre_open_bars)
+    pre = build_pre_open_zones(daily, state_params, pre_open_bars)
     if pre is None:
         return EngineBook({}, {}, "PROXIMITY_TOLERANCE_UNAVAILABLE")
     engines = {zone_id: SetupEngine(tracker, params) for zone_id, tracker in pre.trackers.items()}

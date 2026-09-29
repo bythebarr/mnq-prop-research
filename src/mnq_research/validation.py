@@ -184,6 +184,15 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "target_placement.method",
     "target_placement.parameters",
     # Position management
+    # Trade geometry (Round 12)
+    "trade_geometry.parameters",
+    "trade_geometry.planned_entry_reference",
+    "trade_geometry.geometry",
+    "trade_geometry.target_zone_selection",
+    "trade_geometry.cost_treatment",
+    "trade_geometry.candidate_eligibility",
+    "trade_geometry.candidate_selection",
+    "trade_geometry.selected_candidate_record",
     "position_management.contracts_per_trade",
     "position_management.sizing_method",
     "position_management.scaling_in_out",
@@ -474,6 +483,8 @@ def check_rule_freeze(spec: Any, spec_path: str | Path | None = None) -> RuleFre
         add(problem)
     for problem in _direction_problems(spec):
         add(problem)
+    for problem in _trade_geometry_problems(spec):
+        add(problem)
 
     # 3. Any other unanswered value anywhere (e.g. nested TBDs, extra fields)
     for path, value in _iter_leaves(spec, ""):
@@ -586,6 +597,11 @@ def _level_state_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
     method = params.get("approach_distance_method")
     if not is_unresolved(method) and method != APPROACH_METHOD:
         problems.append(RuleFreezeProblem(f"{base}.approach_distance_method", "INVALID", f"must be {APPROACH_METHOD!r}"))
+    lookback = params.get("pre_open_arming_lookback_bars", _MISSING)
+    if lookback is _MISSING:
+        problems.append(RuleFreezeProblem(f"{base}.pre_open_arming_lookback_bars", "MISSING", "required parameter is missing"))
+    elif not is_unresolved(lookback) and (isinstance(lookback, bool) or lookback not in (0, 1)):
+        problems.append(RuleFreezeProblem(f"{base}.pre_open_arming_lookback_bars", "INVALID", "must be 0 or 1 (only these are implemented)"))
     for name in LEVEL_STATE_INT_PARAMETERS:
         value = params.get(name, _MISSING)
         if value is _MISSING:
@@ -645,6 +661,41 @@ def _direction_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
             continue  # reported as missing/unresolved elsewhere
         if value != expected:
             problems.append(RuleFreezeProblem(path, "INVALID", f"B0 implements only {expected!r}, got {value!r}"))
+    return problems
+
+
+def _trade_geometry_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
+    from decimal import Decimal, InvalidOperation
+
+    from mnq_research.trade_geometry import EXACT_TIE_ACTION, RANKING_CRITERIA
+
+    params = get_path(spec, "trade_geometry.parameters")
+    if not isinstance(params, dict):
+        return []
+    base = "trade_geometry.parameters"
+    problems = []
+    for name in ("planned_entry_adverse_buffer_ticks", "structural_invalidation_buffer_ticks", "target_buffer_ticks"):
+        value = params.get(name, _MISSING)
+        if value is _MISSING:
+            problems.append(RuleFreezeProblem(f"{base}.{name}", "MISSING", "required parameter is missing"))
+        elif not is_unresolved(value) and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
+            problems.append(RuleFreezeProblem(f"{base}.{name}", "INVALID", f"must be a whole number >= 0, got {value!r}"))
+    rr = params.get("minimum_planned_gross_rr", _MISSING)
+    if rr is _MISSING:
+        problems.append(RuleFreezeProblem(f"{base}.minimum_planned_gross_rr", "MISSING", "required parameter is missing"))
+    elif not is_unresolved(rr):
+        try:
+            ok = not isinstance(rr, bool) and Decimal(str(rr)) > 0
+        except InvalidOperation:
+            ok = False
+        if not ok:
+            problems.append(RuleFreezeProblem(f"{base}.minimum_planned_gross_rr", "INVALID", f"must be a positive number, got {rr!r}"))
+    ranking = params.get("candidate_ranking")
+    if not is_unresolved(ranking) and tuple(ranking or ()) != RANKING_CRITERIA:
+        problems.append(RuleFreezeProblem(f"{base}.candidate_ranking", "INVALID", f"B0 implements only {list(RANKING_CRITERIA)}"))
+    tie = params.get("exact_tie_action")
+    if not is_unresolved(tie) and tie != EXACT_TIE_ACTION:
+        problems.append(RuleFreezeProblem(f"{base}.exact_tie_action", "INVALID", f"B0 implements only {EXACT_TIE_ACTION!r}"))
     return problems
 
 

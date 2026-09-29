@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass, field
+from decimal import Decimal
 from enum import Enum
 from typing import Iterable
 
@@ -42,6 +43,9 @@ class CandidateStatus(str, Enum):
     INVALIDATED_BY_DIRECTIONAL_CONFLICT = "INVALIDATED_BY_DIRECTIONAL_CONFLICT"
     NON_EXECUTABLE_DAILY_HALT = "NON_EXECUTABLE_DAILY_HALT"
     USED_BY_ENTRY_CANDIDATE = "USED_BY_ENTRY_CANDIDATE"
+    NON_EXECUTABLE_GEOMETRY = "NON_EXECUTABLE_GEOMETRY"  # failed room-to-target / eligibility (Round 12)
+    NON_EXECUTABLE_NOT_SELECTED = "NON_EXECUTABLE_NOT_SELECTED"  # lower-ranked same-direction candidate
+    NON_EXECUTABLE_GEOMETRY_TIE = "NON_EXECUTABLE_GEOMETRY_TIE"  # exact three-criterion tie
 
 
 class ResolutionResult(str, Enum):
@@ -66,7 +70,11 @@ class DirectionCandidate:
     acceptance_id: str
     confirmation_timestamp_utc: pd.Timestamp
     status: CandidateStatus
-    requires_selection: bool = False  # several same-direction candidates at one time (later round)
+    requires_selection: bool = False  # several same-direction candidates at one time (Round 12 selects)
+    confirmation_id: str = ""
+    confirmation_close: Decimal | None = None
+    origin_lower_boundary: Decimal | None = None
+    origin_upper_boundary: Decimal | None = None
 
 
 @dataclass
@@ -120,6 +128,10 @@ class DailyDirectionBook:
             sequence.acceptance_id,
             event.timestamp_utc,
             CandidateStatus.ENTRY_CANDIDATE,
+            confirmation_id=sequence.confirmation_id,
+            confirmation_close=sequence.confirmation_close,
+            origin_lower_boundary=zone.lower,
+            origin_upper_boundary=zone.upper,
         )
 
     def resolve(self, decision_time_utc: pd.Timestamp, sequences: Iterable[ConfirmationSequence]) -> Resolution:

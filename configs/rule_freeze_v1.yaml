@@ -824,6 +824,7 @@ level_states:
     acceptance_consecutive_closes: 2
     rejection_close_distance_ticks: 2
     rejection_window_complete_bars: 3
+    pre_open_arming_lookback_bars: 1   # D-027: the 09:25-09:30 bar may arm prior/overnight zones (arming only)
     in_points_b0: "breach 0.25; acceptance close distance 0.50; rejection close distance 0.50"
   state_storage:
     principle: >
@@ -918,11 +919,29 @@ level_states:
       APPROACH_WITHDRAWN: history kept, armed state kept, no attempt; a
       subsequent bar may begin a new approach sequence. Diagnostics report
       approach counts and attempt counts separately.
-    jump_without_qualifying_gap: >
-      PENDING OWNER CONFIRMATION (D-027): a directional breach always includes a
-      touch unless the bar jumped the whole zone; such a jump starts an attempt
-      only if it is a QUALIFYING gap (clear-side previous close), otherwise the
-      gap threshold would be bypassed.
+    attempt_triggers: >
+      CONFIRMED (D-027): an attempt begins only through (1) a touch by an
+      appropriately armed directional process or (2) a qualifying directional
+      gap. A breach is recorded only after an attempt exists and is never an
+      independent trigger. A bar jumping completely over a zone without
+      touching must satisfy the full qualifying-gap rule; otherwise it starts no
+      attempt and records no directional breach (its price relation may still
+      be recorded). The clear-side gap threshold cannot be bypassed.
+    withdrawal_timing: >
+      CONFIRMED (D-027): an approach cannot be withdrawn on the bar that created
+      it; withdrawal evaluation begins with the next expected complete eligible
+      bar (no inferred intrabar sequence).
+    pre_open_arming: >
+      CONFIRMED (D-027): prior-RTH/overnight-only zones may take one pre-open
+      arming observation from the completed 09:25:00-09:30:00 New York bar
+      (available at 09:30): close <= L - 0.50 -> ARMED_FROM_BELOW; close >= U +
+      0.50 -> ARMED_FROM_ABOVE; otherwise unarmed. It is never used to record
+      approach, touch, breach, gap, rejection, acceptance or confirmation. If it
+      is missing, incomplete, ineligible or affected by an unresolved data
+      condition, the replay starts unarmed and no side is inferred from earlier
+      data. Opening-range clusters get no pre-open arming. The first bar that
+      can begin an interaction is 09:30-09:35, so the earliest replay
+      acceptance under normal bars is 09:40.
   after_acceptance: >
     Acceptance is an immutable historical event with its timestamp and a
     unique acceptance_id. Its entry eligibility is governed only by the
@@ -1049,9 +1068,9 @@ confirmation:
       forward; a confirmation completing at or after 09:45 (exactly 09:45
       included) may become an entry candidate subject to the later entry rules
       and signal-to-order delay. Opening-range zones still start fresh at 09:45.
-      Examples: acceptance 09:35 -> hold 09:40 -> continuation 09:45 may create a
-      09:45 candidate; acceptance 09:40 -> hold 09:45 at the earliest ->
-      confirmation no earlier than 09:50.
+      Examples (corrected per D-027: the earliest replay acceptance is 09:40):
+      acceptance 09:40 -> hold 09:45 at the earliest -> confirmation no earlier
+      than 09:50.
     cutoff: >
       CONFIRMED (D-026): evaluated at the decision bar's close; a continuation
       bar closing at 11:30 is INVALIDATED_BY_CUTOFF. A confirmation at 11:25 may
@@ -1100,9 +1119,20 @@ vwap:
 
 # --- Room to target (added Round 2) -----------------------------------------------------------------------
 room_to_target:
-  measurement_method: TBD
-  minimum_room: TBD
-  obstruction_definition: TBD
+  # Round 12 (rule owner, 2026-09-29); full rules in trade_geometry.
+  measurement_method: >
+    From the planned entry price (confirmation close + 1 tick long / - 1 tick
+    short) to the planned target (one tick before the nearest boundary of the
+    next distinct active zone in the direction of travel), divided by planned
+    risk to the structural stop: planned_gross_rr = reward points / risk points.
+  minimum_room: "planned_gross_rr >= 1.50 (equality qualifies); gross, before costs"
+  obstruction_definition: >
+    The next distinct active structural zone version in the direction of
+    travel (same contract and trading date, not the originating zone, not
+    expired or superseded) is the obstacle; it defines the target. The nearest
+    such zone is always used; a nearer zone is never skipped for a more
+    profitable distant one. No zone -> ROOM_TO_TARGET_UNAVAILABLE (no invented
+    fixed target).
 
 # --- Entry trigger ------------------------------------------------------------------------------------------------
 entry_trigger:
@@ -1121,21 +1151,94 @@ order_validity:
 
 # --- Structural invalidation ------------------------------------------------------------------------------------------
 structural_invalidation:
-  definition: TBD
-  action: TBD
+  definition: >
+    Round 12: one tick beyond the far side of the complete originating zone:
+    long L - 0.25, short U + 0.25 (structural_invalidation_buffer_ticks: 1).
+  action: TBD   # what happens on invalidation belongs to the trade-management round
 
 # --- Stop placement ----------------------------------------------------------------------------------------------------
 stop_placement:
-  method: TBD
-  buffer_ticks: TBD
+  method: >
+    Round 12: planned stop = structural invalidation price (long L - 0.25,
+    short U + 0.25). Never compressed to fit a contract count or dollar risk.
+    Not used: confirmation/retest bar extremes, fixed dollar, fixed point,
+    percentage or ATR stops (only via the rule-change process).
+  buffer_ticks: 1
   minimum_stop_points: TBD
   maximum_stop_points: TBD
   trade_skipped_if_outside_limits: TBD
 
 # --- Target placement ---------------------------------------------------------------------------------------------------
 target_placement:
-  method: TBD
-  parameters: TBD
+  method: >
+    Round 12: one tick before the nearest boundary of the next distinct active
+    zone in the direction of travel (long: target_zone.lower_boundary - 0.25;
+    short: target_zone.upper_boundary + 0.25). Must lie beyond the planned
+    entry on the profitable side, otherwise the candidate is rejected.
+  parameters: {target_buffer_ticks: 1, source: trade_geometry.parameters}
+
+# --- Trade geometry (added Round 12) -----------------------------------------------------------------------
+# Implemented in src/mnq_research/trade_geometry.py; plain English in docs/TRADE_GEOMETRY.md.
+# Planning geometry ONLY: no order submission, fill, position size, costs or management.
+trade_geometry:
+  parameters:   # candidate B0 values, not optimised
+    planned_entry_adverse_buffer_ticks: 1
+    structural_invalidation_buffer_ticks: 1
+    target_buffer_ticks: 1
+    minimum_planned_gross_rr: "1.50"   # quoted: parsed as an exact decimal
+    candidate_ranking: [highest_planned_gross_rr, smallest_planned_risk_points, greatest_planned_reward_points]
+    exact_tie_action: NO_TRADE
+  planned_entry_reference: >
+    Long: confirmation close + 0.25; short: confirmation close - 0.25, rounded
+    adversely to the tick. A deterministic planning reference for pre-trade
+    geometry and candidate comparison only, never a fill; actual performance
+    and R values must use the actual (simulated or live) fill recorded
+    separately.
+  geometry: >
+    planned_risk_points = entry - stop (long) / stop - entry (short); invalid
+    if <= 0. planned_reward_points = target - entry (long) / entry - target
+    (short); must be > 0. planned_gross_rr = reward / risk. All prices finite,
+    positive and tick-aligned; comparisons use exact decimals/fractions.
+  target_zone_selection: >
+    Long: active zone versions whose lower boundary is strictly above the
+    planned entry, sorted by lower boundary ascending; the first is the target
+    zone. Short: upper boundary strictly below the planned entry, sorted
+    descending. Excluded: expired or superseded zones, the originating zone, any
+    uncreated swing level, other contracts, other trading dates. "Opposing"
+    means the next obstacle in the direction of travel; it need not have
+    produced an opposite setup.
+  cost_treatment: >
+    Stop and target are never altered for costs in Round 12. Reserved and
+    unresolved until the commission/slippage model is frozen:
+    estimated_round_trip_cost_usd, estimated_cost_points,
+    planned_net_reward_points, planned_net_rr. A gross 1.50R candidate is not
+    automatically economically worthwhile.
+  candidate_eligibility:
+    - All direction-event identifiers match.
+    - There is no daily directional-conflict halt.
+    - Confirmation is executable and not expired.
+    - Planned entry, stop and target are valid.
+    - A distinct next opposing zone exists.
+    - Planned risk is positive.
+    - Planned reward is positive.
+    - Planned gross R:R is at least 1.50.
+    - Decision time is before 11:30.
+    - No blackout, missing-data or safety halt is active.
+    - Otherwise record the exact rejection reason.
+  candidate_selection: >
+    One room-qualified candidate -> select it. Several same-direction
+    room-qualified candidates at one decision time -> rank by highest
+    planned_gross_rr, then smallest planned_risk_points, then greatest
+    planned_reward_points, using only information available then and exact
+    representations. A unique best is selected. An exact three-criterion tie
+    selects none: NO_TRADE_SAME_DIRECTION_GEOMETRY_TIE; never broken by
+    processing order, zone name, level type, candidate id, dictionary or file
+    order, or hypothetical later performance. The tie blocks only that
+    timestamp (no daily halt); all tied confirmations become non-executable and
+    cannot be reused. Lower-ranked candidates are not selected and become
+    non-executable (pending D-028).
+  selected_candidate_record: [candidate_id, direction, decision_timestamp, confirmation_timestamp, contract, zone_version_id, attempt_id, acceptance_id, confirmation_id, target_zone_version_id, planned_entry_price, structural_invalidation_price, planned_stop_price, planned_target_price, planned_risk_points, planned_reward_points, planned_gross_rr, selection_rank_values, specification_version, configuration_hash]
+  not_an_order: A SELECTED_ENTRY_CANDIDATE creates no order, quantity or fill in Round 12.
 
 # --- Position management ---------------------------------------------------------------------------------------------------
 position_management:

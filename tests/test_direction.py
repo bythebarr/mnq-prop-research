@@ -243,3 +243,13 @@ def test_opening_range_zones_still_cannot_use_construction_bars_and_superseded_c
     assert old.sequences and old.sequences[0].outcome is O.INVALIDATED_BY_ZONE_CHANGE
     new = next(e for e in engines.active.values() if LevelType.OPENING_RANGE_HIGH in e.zone.parent_constituent_types)
     assert [e.event for e in new.zone.history] == [ZoneEventType.ZONE_INITIALIZED] and not new.sequences
+
+
+def test_a_pre_0945_opposite_confirmation_conflict_halts_the_day():
+    long_s, short_s = confirmed("LONG", dt.time(9, 10)), confirmed("SHORT", dt.time(9, 10))
+    t = confirmation_time(long_s)
+    assert t == confirmation_time(short_s) == ny_time(TRADE, dt.time(9, 40))
+    b = book()
+    res = b.resolve(t, [long_s.sequence, short_s.sequence])
+    assert res.result is R.NO_TRADE_DIRECTIONAL_CONFLICT and b.halted
+    assert {c.status for c in res.candidates} == {S.INVALIDATED_BY_DIRECTIONAL_CONFLICT}

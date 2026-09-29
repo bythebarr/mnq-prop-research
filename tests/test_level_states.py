@@ -541,3 +541,78 @@ def test_gap_threshold_is_enforced_in_a_non_b0_parameter_fixture():
     events = run(z, bar(2, 20015.0, 20010.0, 20012.0))  # low above U
     assert E.GAPPED_ABOVE_ZONE not in events and E.ATTEMPT_STARTED not in events
     # A jump over the zone that is not a qualifying gap starts no attempt (D-027).
+
+
+# =========================================================================== D-027
+
+
+def bars_from(start: dt.time, *hlc, complete: bool = True) -> list[DecisionBar]:
+    t = ny_time(TRADE, start)
+    return [DecisionBar(t + i * FIVE, t + (i + 1) * FIVE, *v, complete=complete) for i, v in enumerate(hlc)]
+
+
+def prior_zone(book):
+    return next(z for z in book.active.values() if LevelType.PRIOR_RTH_HIGH in z.parent_constituent_types)
+
+
+def test_the_0925_bar_can_arm_prior_and_overnight_zones():
+    daily = daily_set(prior_high=20100.0, overnight_low=19900.0, or_high=20070.0, or_low=20020.0)
+    book = initialize_zones(daily, bars_from(dt.time(9, 25), (20060.0, 20040.0, 20050.0)), PARAMS)
+    z = prior_zone(book)
+    assert z.armed_side is Origin.BELOW and z.armed_timestamp == ny_time(TRADE, dt.time(9, 30))
+    (armed,) = z.events(E.ARMED_FROM_BELOW)
+    assert armed.detail == "PRE_OPEN_ARMING" and armed.initialization_replay
+
+
+def test_the_pre_open_bar_cannot_create_interactions_or_acceptance():
+    daily = daily_set(20100.0, 19900.0, 20070.0, 20020.0)
+    book = initialize_zones(daily, bars_from(dt.time(9, 25), (20101.0, 20090.0, 20099.0)), PARAMS)  # touches, closes clear below
+    kinds = {e.event for e in prior_zone(book).history}
+    assert E.ARMED_FROM_BELOW in kinds
+    assert not kinds & {E.TOUCH_FROM_BELOW, E.TOUCH_ORIGIN_UNKNOWN, E.APPROACHED_FROM_BELOW, E.ATTEMPT_STARTED,
+                        E.BREACHED_ABOVE, E.GAPPED_ABOVE_ZONE, E.ACCEPTED_ABOVE, E.REJECTED_UPWARD_ATTEMPT}
+
+
+@pytest.mark.parametrize("bars", ["missing", "incomplete"])
+def test_missing_or_incomplete_pre_open_data_starts_the_replay_unarmed(bars):
+    daily = daily_set(20100.0, 19900.0, 20070.0, 20020.0)
+    pre = [] if bars == "missing" else bars_from(dt.time(9, 25), (None, None, None), complete=False)
+    z = prior_zone(initialize_zones(daily, pre, PARAMS))
+    assert z.armed_side is None and z.events(E.PRE_OPEN_ARMING_UNAVAILABLE)
+
+
+def test_opening_range_zones_receive_no_pre_open_arming():
+    daily = daily_set(20100.0, 19900.0, 20070.0, 20020.0)
+    book = initialize_zones(daily, bars_from(dt.time(9, 25), (20010.0, 20000.0, 20005.0)), PARAMS)  # below both OR levels
+    for z in book.active.values():
+        if set(z.parent_constituent_types) & level_states.OPENING_RANGE_TYPES:
+            assert z.armed_side is None and [e.event for e in z.history] == [E.ZONE_INITIALIZED]
+
+
+def test_earliest_replay_acceptance_is_0940():
+    daily = daily_set(20100.0, 19900.0, 20070.0, 20020.0)
+    bars = bars_from(
+        dt.time(9, 25),
+        (20060.0, 20040.0, 20050.0),  # 09:25-09:30 arms
+        (20102.0, 20095.0, 20100.5),  # 09:30-09:35 touch: attempt + acceptance close 1
+        (20104.0, 20100.5, 20101.0),  # 09:35-09:40 acceptance close 2
+    )
+    (accepted,) = prior_zone(initialize_zones(daily, bars, PARAMS)).events(E.ACCEPTED_ABOVE)
+    assert accepted.timestamp_utc == ny_time(TRADE, dt.time(9, 40))
+
+
+def test_a_breach_cannot_start_an_attempt_and_a_non_qualifying_jump_starts_nothing():
+    z = zone()
+    run(z, far_below(0))  # armed below
+    run(z, bar(1, 19999.75, 19996.0, 19999.75))  # approach; close NOT clear-side (> L - 0.50)
+    events = run(z, bar(2, 20015.0, 20010.0, 20012.0))  # jumps the zone, breaches U, but no qualifying gap
+    assert E.ATTEMPT_STARTED not in events and E.BREACHED_ABOVE not in events and E.GAPPED_ABOVE_ZONE not in events
+    assert z.attempt_count == 0 and z.current_price_relation.value == "ABOVE_ZONE"
+
+
+def test_an_approach_is_never_withdrawn_on_its_own_starting_bar():
+    z = zone()
+    run(z, far_below(0))
+    events = run(z, bar(1, 19995.0, 19990.0, 19992.0))  # starts an approach AND closes clear below
+    assert E.APPROACH_SEQUENCE_STARTED in events and E.APPROACH_WITHDRAWN not in events
+    assert E.APPROACH_WITHDRAWN in run(z, bar(2, 19995.0, 19990.0, 19992.0))  # next bar may withdraw
