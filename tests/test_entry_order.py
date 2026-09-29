@@ -460,14 +460,14 @@ def test_22_nominal_account_size_is_not_risk_capital():
 def test_23_no_live_or_paper_entry_without_the_protection_layer():
     dep = SPEC["entry_order_lifecycle"]["protective_order_dependency"]
     assert dep["live_or_paper_order_submission"] == "prohibited" and EP.live_or_paper_order_submission == "prohibited"
-    assert "entry_order_lifecycle.protective_order_dependency.protective_order_layer_status" in check_rule_freeze(SPEC).unresolved_paths()
+    assert "protective_orders.deployment.capability_verification_status" in check_rule_freeze(SPEC).unresolved_paths()
     spec = copy.deepcopy(SPEC)
     spec["entry_order_lifecycle"]["protective_order_dependency"]["live_or_paper_order_submission"] = "permitted"
     assert "entry_order_lifecycle.protective_order_dependency.live_or_paper_order_submission" in invalid_paths(spec)
     with pytest.raises(ValueError):
         EntryOrderParams.from_spec(spec)
     _, order = scenario("full")
-    assert order.protection_task.status == "REQUIRED_PROTECTION_LAYER_NOT_IMPLEMENTED"
+    assert order.protection_task.status == "PROTECTION_REQUIRED"
     imported = set()
     for node in ast.walk(ast.parse(inspect.getsource(entry_order))):
         if isinstance(node, ast.Import):
@@ -754,7 +754,7 @@ def test_d029_13_a_fill_at_or_beyond_the_stop_invokes_emergency_flattening():
     assert short.emergency_flatten_required
     _, valid = submitted()
     valid.on_fill(SUB + 100 * MS, 1, D("20000.00"), AUTH)  # one tick inside: valid side
-    assert not valid.emergency_flatten_required and valid.protection_task.status == "REQUIRED_PROTECTION_LAYER_NOT_IMPLEMENTED"
+    assert not valid.emergency_flatten_required and valid.protection_task.status == "PROTECTION_REQUIRED"
 
 
 def test_d029_14_the_structural_stop_is_never_widened():

@@ -787,6 +787,111 @@ permits an entry."
 
 ## 11. Invalidation, stop, target and position management
 
+### `protective_orders.parameters`
+*(Added in Round 14.)*
+**Question:** Which order types, time in force, dispatch deadline, acknowledgement timeout, bracket mode, target trade-through and same-bar policy protect a position?
+**Illustrative only:** `protection_dispatch_deadline_milliseconds: 250`.
+
+### `protective_orders.deployment`
+*(Added in Round 14.)*
+**Question:** What platform capabilities must be proven before automated deployment?
+**Illustrative only:** "Server-side stop and OCO, verified by adapter and paper tests."
+
+### `protective_orders.prices`
+*(Added in Round 14.)*
+**Question:** Where are the protective stop and target, and may they ever move?
+**Illustrative only:** "Frozen from Round 12; never moved."
+
+### `protective_orders.protection_task_fields`
+*(Added in Round 14.)*
+**Question:** What must a PROTECTION_REQUIRED task record?
+**Illustrative only:** "Order, position, prices, all IDs, deadline, hashes."
+
+### `protective_orders.dispatch`
+*(Added in Round 14.)*
+**Question:** How quickly must protection be dispatched after an entry fill?
+**Illustrative only:** "Same event cycle, at most 250 ms."
+
+### `protective_orders.bracket_workflow`
+*(Added in Round 14.)*
+**Question:** How are the stop, target and OCO link submitted?
+**Illustrative only:** "One atomic server-side bracket if possible; otherwise stop first."
+
+### `protective_orders.stop_first_rule`
+*(Added in Round 14.)*
+**Question:** Which protective order has priority, and is a target alone acceptable?
+**Illustrative only:** "Stop first; a target alone is never protection."
+
+### `protective_orders.protection_active_definition`
+*(Added in Round 14.)*
+**Question:** When exactly is a position considered protected?
+**Illustrative only:** "Only after authoritative confirmation of every part."
+
+### `protective_orders.partial_entry_fills`
+*(Added in Round 14.)*
+**Question:** How is protection handled while the entry fills in pieces?
+**Illustrative only:** "Protect each confirmed quantity immediately."
+
+### `protective_orders.oco_behavior`
+*(Added in Round 14.)*
+**Question:** What happens to one sibling when the other fills fully or partly?
+**Illustrative only:** "Cancel or shrink it; never allow a reversal."
+
+### `protective_orders.stop_activation`
+*(Added in Round 14.)*
+**Question:** When does a protective stop trigger in research replay, and at what price does it fill?
+**Illustrative only:** "First trade at or through the stop; fill by the slippage model."
+
+### `protective_orders.target_activation`
+*(Added in Round 14.)*
+**Question:** When is a limit target considered filled in research replay?
+**Illustrative only:** "Only on a one-tick trade-through."
+
+### `protective_orders.same_bar_ambiguity`
+*(Added in Round 14.)*
+**Question:** What if the stop and target are both reachable within one bar?
+**Illustrative only:** "Stop first, unless finer data show the order."
+
+### `protective_orders.stop_failure`
+*(Added in Round 14.)*
+**Question:** Which stop problems force an emergency flatten?
+**Illustrative only:** "Rejection, timeout, wrong price, …"
+
+### `protective_orders.target_failure`
+*(Added in Round 14.)*
+**Question:** What if the stop is fine but the target fails?
+**Illustrative only:** "Still flatten; never an unplanned stop-only trade."
+
+### `protective_orders.oco_link_failure`
+*(Added in Round 14.)*
+**Question:** What if the OCO link is missing or unknown?
+**Illustrative only:** "Emergency flatten."
+
+### `protective_orders.fill_at_or_beyond_stop`
+*(Added in Round 14.)*
+**Question:** How does protection behave when the entry filled at or beyond the stop?
+**Illustrative only:** "No normal target; flatten immediately."
+
+### `protective_orders.flat_confirmation`
+*(Added in Round 14.)*
+**Question:** What proves the position is flat?
+**Illustrative only:** "An authoritative position of zero."
+
+### `protective_orders.mandatory_session_flatten`
+*(Added in Round 14.)*
+**Question:** What happens at the mandatory flatten time?
+**Illustrative only:** "Cancel target, keep stop, flatten, confirm zero."
+
+### `protective_orders.exit_outcomes`
+*(Added in Round 14.)*
+**Question:** Which terminal trade outcomes are allowed?
+**Illustrative only:** "TARGET_FILLED, STOP_FILLED, …"
+
+### `protective_orders.exit_record`
+*(Added in Round 14.)*
+**Question:** What must every closed-trade record keep?
+**Illustrative only:** "Actual prices, quantities, times, costs, reason."
+
 ### `structural_invalidation.definition`
 **Question:** What price behaviour proves the trade idea wrong,
 independently of the stop?
@@ -951,6 +1056,11 @@ sizing formula says? It must not exceed the prop firm's limit.
 position give it back?
 **Illustrative only:** "Any positive fill; closing the position does not
 restore it."
+
+### `daily_limits.trade_definition`
+*(Added in D-030.)*
+**Question:** What exactly counts as a "trade" for the daily limit?
+**Illustrative only:** "An entry with any positive authoritative fill."
 
 ### `daily_limits.max_trades_per_day`
 **Question:** What is the maximum number of trades per day? This is a hard

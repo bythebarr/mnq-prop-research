@@ -1251,7 +1251,10 @@ entry_order_lifecycle:
       protected or flattened. Reconciliation never restores new-entry
       eligibility that trading date.
   fill_at_or_beyond_stop: >
-    Long average fill <= planned stop, or short average fill >= planned stop:
+    D-030: ANY authoritative fill at or beyond the stop (long fill price <=
+    planned stop, short >= planned stop) latches emergency_flatten_required;
+    later fills that improve the average never reset it, remain real, and are
+    included in the emergency flatten. Then:
     keep the structural stop unchanged for audit; never move it farther; place
     no stop on the wrong side of the fill; immediately invoke emergency
     flattening of the confirmed quantity through the emergency market-close,
@@ -1264,15 +1267,132 @@ entry_order_lifecycle:
     temporary_known_block: Candidate terminal and not reusable; a completely fresh setup may occur after the block ends (e.g. news entry protection).
     permanent_safety_or_conflict_halt: New entries stay halted under that governing rule.
     unknown_eligibility_or_system_state: Halt new entries for the remainder of the date.
-    invalid_structural_stop: Halt new entries for the remainder of the date (integrity failure; D-030 item to confirm).
+    invalid_structural_stop: >
+      D-030: before submission -> do not submit; candidate terminal; halt new
+      entries for the date; record INVALID_STRUCTURAL_STOP and
+      PRE_SUBMISSION_SAFETY_HALT. A known, deterministic validation failure,
+      never ENTRY_ORDER_STATE_UNKNOWN. Discovered after a fill -> the position
+      is unprotected: emergency flatten, halt, preserve all fill and
+      validation records.
   cancellation_race: >
     A fill arriving after the cancellation request is real exposure: protect
     it, reconcile order and position, and make no new entry that day.
   audit: Every outcome, including every failure, produces a deterministic audit record with its reasons and timestamps.
   protective_order_dependency:
     simulated_fill_creates: REQUIRED_PROTECTION_TASK   # quantity = confirmed position; frozen stop and target (EMERGENCY_FLATTEN_REQUIRED if the fill is at or beyond the stop)
-    protective_order_layer_status: REQUIRED_BEFORE_EXECUTABLE
+    protective_order_layer_status: SIMULATION_IMPLEMENTED_ROUND_14   # deployment still blocked by protective_orders.deployment
     live_or_paper_order_submission: prohibited
+
+# --- Protective stop/target orders (added Round 14) ---------------------------------------------------------
+# Implemented in src/mnq_research/protection.py; plain English in docs/PROTECTIVE_ORDERS.md.
+# SIMULATION ONLY: no broker, Quantower, Rithmic, paper or live connection.
+protective_orders:
+  parameters:   # candidate B0 values, not optimised
+    protective_stop_order_type: STOP_MARKET
+    profit_target_order_type: LIMIT
+    protective_time_in_force: DAY
+    protection_dispatch_deadline_milliseconds: 250   # operational safety requirement
+    protective_order_acknowledgement_timeout_seconds: "2.000"   # separately for stop, target and OCO link
+    preferred_bracket_mode: NATIVE_SERVER_SIDE_OCO_BRACKET
+    target_fill_trade_through_ticks: 1
+    same_bar_stop_target_policy: CONSERVATIVE_STOP_FIRST
+  deployment:
+    server_side_protective_orders_required: true
+    server_side_oco_required: true
+    capability_verification_status: REQUIRED_BEFORE_EXECUTABLE   # Quantower/Rithmic adapter and paper tests
+    client_side_only_stop: INSUFFICIENT_FOR_UNATTENDED_STRATEGY
+    rule: If native server-side stop/OCO behaviour cannot be verified, automated deployment remains prohibited.
+  prices: >
+    Unchanged from Round 12. Long: stop L - 0.25, target = next opposing zone
+    lower boundary - 0.25. Short: stop U + 0.25, target = next opposing zone
+    upper boundary + 0.25. Never trailed, widened, tightened, moved to
+    breakeven or recalculated.
+  protection_task_fields: [entry_order_id, position_id, account_id, contract, side, confirmed_open_quantity, actual_average_entry, frozen_stop_price, frozen_target_price, zone_version_id, attempt_id, acceptance_id, confirmation_id, candidate_id, first_fill_utc, protection_deadline_utc, specification_version, configuration_hash]
+  dispatch: >
+    Every positive authoritative entry fill creates PROTECTION_REQUIRED.
+    Protective submission begins in the same event-processing cycle as the
+    fill and no later than 250 ms after the fill is received; otherwise
+    PROTECTION_DISPATCH_DEADLINE_MISSED, EMERGENCY_FLATTEN_REQUIRED, halt.
+  bracket_workflow: >
+    Preferred: NATIVE_SERVER_SIDE_OCO_BRACKET (stop and target as one atomic
+    server-side unit). Otherwise, if separate server-side orders are
+    supported: submit the stop, confirm it, submit the target, confirm it,
+    confirm the OCO link; PROTECTION_PENDING until all checks pass. A
+    client-side-only stop is insufficient. Deployment stays blocked until the
+    workflow is proven not to create naked exposure or accidental reversals.
+  stop_first_rule: >
+    A confirmed stop without a target is temporarily risk-protected. A target
+    without a stop is never acceptable: target active while the stop is
+    absent, rejected, unknown or incorrect -> EMERGENCY_FLATTEN_REQUIRED.
+  protection_active_definition: >
+    PROTECTION_ACTIVE only after authoritative confirmation of the stop, the
+    target, the OCO link, the quantities (= confirmed open quantity), the
+    prices, and the side, contract and account. A local object or a
+    submission request is never confirmation.
+  partial_entry_fills: >
+    Protect each confirmed filled quantity immediately, without waiting for
+    the entry order to finish; never protect unfilled intended quantity;
+    never top up. Additional entry fills raise the required protection to the
+    total confirmed open quantity, with prices unchanged. If the quantity
+    cannot be synchronised reliably: PROTECTION_QUANTITY_UNKNOWN,
+    EMERGENCY_FLATTEN_REQUIRED.
+  oco_behavior: >
+    Stop and target are siblings. Full sibling fill and position flat ->
+    cancel and confirm the other sibling, record the exit; it may never create
+    a reverse position. Partial sibling fill -> reduce the other sibling to
+    exactly the remaining open quantity, keep the OCO, never increase size or
+    restore exited quantity. Reduction/cancellation not confirmed ->
+    OCO_RECONCILIATION_FAILURE, emergency flatten any confirmed remainder. A
+    sibling fill after the position was confirmed flat is contradictory:
+    UNKNOWN, reconcile immediately, flatten any unintended exposure.
+  stop_activation: >
+    Research replay: a long stop-market triggers on the first authoritative
+    trade <= stop (short: >= stop). The fill uses the later frozen
+    stop-slippage model, never the trigger price by assumption. Live trigger
+    semantics must be verified against Quantower/Rithmic behaviour.
+  target_activation: >
+    Research replay without queue data: a long sell-limit target needs a
+    trade >= target + 0.25 (short: <= target - 0.25); a touch alone is not a
+    fill. Record CONSERVATIVE_ONE_TICK_TRADE_THROUGH_TARGET_FILL. Order-level
+    or queue data, if ever available, form a separate execution model.
+  same_bar_ambiguity: >
+    Stop and target both reachable within one minute and no finer chronology:
+    assume the stop first, conservative stop fill, mark
+    SAME_BAR_STOP_TARGET_AMBIGUITY and CONSERVATIVE_STOP_FIRST. One-second or
+    trade data that establish order are used chronologically, keeping the
+    source reference; unresolved ordering inside the finer interval falls
+    back to stop-first.
+  stop_failure: >
+    Rejection, acknowledgement timeout, unknown state, wrong price, quantity,
+    contract, account or side, cancellation without confirmed replacement,
+    inactive while the position is open, or client/server disagreement ->
+    halt new entries, keep the original stop for audit, begin emergency
+    flattening, reconcile, critical alert; never widen or recreate strategy
+    risk opportunistically.
+  target_failure: >
+    Stop authoritatively active but the target rejected, unknown, wrongly
+    priced or sized -> halt, attempt orderly target cancellation and
+    reconciliation, emergency flatten (never an unplanned stop-only
+    position), keep the stop until flat is confirmed, record
+    TARGET_PROTECTION_FAILURE.
+  oco_link_failure: Both orders exist but the native/server-side OCO link is absent, rejected or unknown -> OCO_LINK_FAILURE, EMERGENCY_FLATTEN_REQUIRED.
+  fill_at_or_beyond_stop: >
+    With the D-029 emergency-flatten latch active: no normal target, no
+    pretend bracket; execute the emergency-flatten workflow immediately; keep
+    any safe server-side stop only until flattening is reconciled.
+  flat_confirmation: >
+    Flat only when authoritative position state reports quantity 0 (an exit
+    fill alone is not enough). Then cancel remaining siblings, confirm their
+    terminal states, mark the trade closed, keep the daily entry allowance
+    consumed, continue diagnostics only.
+  mandatory_session_flatten: >
+    At the emergency-flatten time: cancel the target, begin controlled
+    emergency flattening, keep protective stop coverage until flattening is
+    authoritatively resolved where operationally safe, reconcile fills and
+    orders, confirm zero position and that no sibling can reopen exposure.
+    Live sequencing must be proven by adapter fault-injection tests.
+  exit_outcomes: [TARGET_FILLED, STOP_FILLED, SCHEDULED_NEWS_FLATTEN, SESSION_EMERGENCY_FLATTEN, PROTECTION_FAILURE_FLATTEN, ENTRY_INVALIDATION_FLATTEN, MANUAL_SAFETY_FLATTEN, UNKNOWN_EXIT_STATE]
+  exit_record: Every terminal record keeps actual prices, quantities, timestamps, costs when available, and the exit reason.
 
 # --- Structural invalidation ------------------------------------------------------------------------------------------
 structural_invalidation:
@@ -1394,8 +1514,8 @@ position_management:
   contracts_per_trade: TBD
   sizing_method: TBD
   scaling_in_out: TBD
-  breakeven_rule: TBD
-  trailing_stop_rule: TBD
+  breakeven_rule: NONE   # Round 14: never moved to breakeven
+  trailing_stop_rule: NONE   # Round 14: never trailed, widened, tightened or recalculated
   time_based_exit: TBD
   # Round 13 (rule owner, 2026-09-29): deliberately unresolved until evidence exists.
   risk_per_trade:
@@ -1427,7 +1547,13 @@ daily_limits:
     FILLED_ENTRY_LIMIT_REACHED. It keeps blocking after the position closes.
     Diagnostic signals may still be logged without orders; they can never
     become B0 trades. A NOT_SUBMITTED order does not use the allowance.
-  max_trades_per_day: 1   # = max_filled_entries_per_trading_date (D-029 decision 4: no second strategy entry)
+  max_trades_per_day: 1   # D-030 confirmed; = max_filled_entries_per_trading_date
+  trade_definition: >
+    D-030: a "trade" is a strategy-generated entry with any positive
+    authoritative fill. Candidate generation, candidate rejection,
+    NOT_SUBMITTED, an explicitly rejected entry with zero fill and a
+    cancelled entry with zero fill do not consume the allowance. Any positive
+    authoritative fill consumes it permanently for the trading date.
   max_losing_trades_per_day: TBD
   daily_loss_stop_usd: TBD
 
@@ -1502,9 +1628,16 @@ session_flattening:
 # A one-minute OHLC bar does not reveal whether its high or low came first.
 # See docs/DATA_CONTRACT.md section "Intrabar ambiguity".
 intrabar_ambiguity:
-  stop_and_target_same_bar: TBD
+  # Round 14 (rule owner, 2026-09-29); full rules in protective_orders.same_bar_ambiguity.
+  stop_and_target_same_bar: >
+    Both reachable within one minute and no finer chronology -> assume the
+    stop first, fill with the conservative stop-fill model, mark
+    SAME_BAR_STOP_TARGET_AMBIGUITY and CONSERVATIVE_STOP_FIRST.
   entry_and_exit_same_bar: TBD
-  resolution_with_finer_data: TBD
+  resolution_with_finer_data: >
+    One-second or trade data that establish the order are used
+    chronologically, keeping the higher-resolution source reference. If the
+    finer interval itself is still ambiguous, stop-first remains the fallback.
   fill_approximation_without_finer_data:
     applies_to: marketable entry orders submitted during a minute when only one-minute OHLCV is available
     long_entry_fill: minute high + adverse slippage (slippage.entry_ticks)

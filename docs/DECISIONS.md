@@ -697,4 +697,85 @@ Tests were added for each, and all are now caught.
    beyond the stop, the requirement stays even if later fills (possible only
    with quantity > 1) move the average back.
 **Reversible:** yes.
-**Status:** CONFIRMED (D-029 decisions 1–7). Items 1–4 PENDING.
+**Status:** CONFIRMED (D-029 decisions 1–7). Items 1–4 were CONFIRMED on
+2026-09-29, item 2 with a correction (see D-031).
+
+## D-031 — D-030 confirmations and the protective stop/target layer (Round 14)
+**D-030 confirmations (rule owner, 2026-09-29):**
+1. **Daily limit.** `max_trades_per_day: 1` and `reentry.allowed: false`.
+   A trade is a strategy entry with any positive authoritative fill
+   (`daily_limits.trade_definition`). Candidates, rejections, NOT_SUBMITTED,
+   and rejected or cancelled zero-fill entries do not consume the allowance.
+2. **Invalid structural stop before submission.** The order is not
+   submitted, the candidate is terminal, and the day halts, with the reasons
+   `INVALID_STRUCTURAL_STOP` and `PRE_SUBMISSION_SAFETY_HALT`. This is NOT
+   UNKNOWN, because the order state is known. If the problem is found after
+   a fill, the position is unprotected: emergency flatten, halt, keep all
+   records.
+3. **State loss after a clean fill** → UNKNOWN. The fills, the earlier
+   event, the quantity, the allowance used, the protection task and all
+   audit events are kept.
+4. **The emergency-flatten latch** is set by ANY authoritative fill at or
+   beyond the stop and never resets. Later fills stay real and are included
+   in the flatten. *Implementation change:* the latch now checks each fill;
+   D-029 checked the average. A mutation-style test found the gap.
+
+**Round 14 decision:** a simulation-only protective bracket in
+`protection.py`, with plain English in `docs/PROTECTIVE_ORDERS.md`:
+- **Orders:** a STOP_MARKET stop and a LIMIT target at the frozen prices,
+  DAY, linked by a native server-side OCO. The preferred mode is an atomic
+  bracket; otherwise stop, then target, then OCO link. Client-side-only
+  protection is refused.
+- **Dispatch** must happen within 250 ms of the fill. The stop, the target
+  and the OCO link each have their own 2.000 s acknowledgement clock.
+- **Active:** `PROTECTION_ACTIVE` needs authoritative confirmation of every
+  part: prices, quantities, side, contract and account.
+- **Failures:** a stop failure, a target failure (even with the stop
+  active), an OCO-link failure, an unsynchronisable quantity, a missed
+  dispatch deadline, or the entry-invalidation latch all mean an emergency
+  flatten and a day halt.
+- **OCO exits:** cancel or shrink the sibling. A late or excess sibling fill
+  means `UNKNOWN_EXIT_STATE` plus a flatten of the unintended exposure. Flat
+  requires an authoritative zero position and confirmed-terminal siblings.
+- **Research replay:**
+  - a stop triggers on the first authoritative trade at or through it (the
+    fill price is left to the slippage model);
+  - a target needs a one-tick trade-through;
+  - with only one-minute data, stop first; finer chronology overrides.
+- **Deployment:** `capability_verification_status: REQUIRED_BEFORE_EXECUTABLE`
+  blocks execution, and `live_or_paper_order_submission: prohibited`
+  stands.
+- **Also filled** from your Round 14 statements:
+  - `intrabar_ambiguity.stop_and_target_same_bar`;
+  - `intrabar_ambiguity.resolution_with_finer_data`;
+  - `position_management.breakeven_rule: NONE`;
+  - `position_management.trailing_stop_rule: NONE`.
+
+  `protective_order_layer_status` is now `SIMULATION_IMPLEMENTED_ROUND_14`.
+
+**Testing:** 29 Round 14 tests plus 4 others (a session flatten, parameter
+provenance, a re-sync and a quantity guard), and 4 D-030 tests; 269 in
+total. In the 39 mutation checks, 3 mutations initially survived:
+- two were weak spots, and tests were added for them;
+- one is an equivalent mutant: a target confirmation can only arrive while
+  the target is pending.
+
+**Pending owner confirmation:**
+1. **Mixed exits.** When a stop partly fills and the target fills the rest,
+   the outcome is taken from the fill that made the position flat.
+2. **Late sibling fill after a close.** The closed trade's outcome is
+   reclassified as `UNKNOWN_EXIT_STATE`. The original close stays in the
+   event log.
+3. **OCO-link clock.** In atomic mode it starts at dispatch. In separate mode
+   it starts when the target is confirmed and the link is requested.
+4. **Scheduled flatten.** If the target cancellation is not confirmed within
+   2.000 s, that is an emergency (`TARGET_CANCEL_NOT_CONFIRMED`).
+5. **Position mismatch.** A position report that disagrees with the
+   confirmed open quantity, side, contract or account means
+   `UNKNOWN_EXIT_STATE`.
+6. **Fields filled from Round 14 wording:** `breakeven_rule` and
+   `trailing_stop_rule` are `NONE`, and both intrabar same-bar fields are
+   filled.
+**Reversible:** yes.
+**Status:** D-030 CONFIRMED. Round 14 rules CONFIRMED by the owner. Items 1–6
+PENDING.

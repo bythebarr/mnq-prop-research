@@ -109,6 +109,7 @@ mnq-prop-research/
 │   ├── DIRECTION.md           ← plain-English direction rules
 │   ├── TRADE_GEOMETRY.md      ← plain-English geometry and selection rules
 │   ├── ORDER_LIFECYCLE.md     ← plain-English entry-order lifecycle (simulation only)
+│   ├── PROTECTIVE_ORDERS.md   ← plain-English stop/target bracket (simulation only)
 │   └── DECISIONS.md           ← architecture decisions and rationale
 ├── data/                      ← NOT committed to Git (except placeholders)
 │   ├── raw/                   ← vendor files exactly as received
@@ -132,6 +133,7 @@ mnq-prop-research/
 │   ├── eligibility.py         ← D-028 typed, fail-closed eligibility controls
 │   ├── entry_order.py         ← Round 13 simulated market entry-order lifecycle (no broker)
 │   ├── sizing.py              ← D-029 floor/skip sizing mechanics (dollar risk unresolved)
+│   ├── protection.py          ← Round 14 simulated protective stop/target OCO bracket (no broker)
 │   ├── level_states.py        ← Round 9 zone interaction states (component only)
 │   ├── structural_levels.py   ← Round 8 level rules (component only; not a backtest)
 │   └── synthetic_data.py      ← FAKE data for software tests only

@@ -190,6 +190,28 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "entry_order_lifecycle.not_submitted_effects",
     "entry_trigger.not_a_trigger",
     "entry_trigger.terminality",
+    # Protective stop/target orders (Round 14)
+    "protective_orders.parameters",
+    "protective_orders.deployment",
+    "protective_orders.prices",
+    "protective_orders.protection_task_fields",
+    "protective_orders.dispatch",
+    "protective_orders.bracket_workflow",
+    "protective_orders.stop_first_rule",
+    "protective_orders.protection_active_definition",
+    "protective_orders.partial_entry_fills",
+    "protective_orders.oco_behavior",
+    "protective_orders.stop_activation",
+    "protective_orders.target_activation",
+    "protective_orders.same_bar_ambiguity",
+    "protective_orders.stop_failure",
+    "protective_orders.target_failure",
+    "protective_orders.oco_link_failure",
+    "protective_orders.fill_at_or_beyond_stop",
+    "protective_orders.flat_confirmation",
+    "protective_orders.mandatory_session_flatten",
+    "protective_orders.exit_outcomes",
+    "protective_orders.exit_record",
     # Execution eligibility integration (D-028)
     "execution_eligibility_integration.status",
     "execution_eligibility_integration.requirement",
@@ -230,6 +252,7 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "daily_limits.max_filled_entries_per_trading_date",
     "daily_limits.filled_entry_allowance_rule",
     "daily_limits.max_trades_per_day",
+    "daily_limits.trade_definition",
     "daily_limits.max_losing_trades_per_day",
     "daily_limits.daily_loss_stop_usd",
     "no_trade_conditions.execution_safety_conditions",
@@ -519,6 +542,8 @@ def check_rule_freeze(spec: Any, spec_path: str | Path | None = None) -> RuleFre
     for problem in _trade_geometry_problems(spec):
         add(problem)
     for problem in _entry_order_problems(spec):
+        add(problem)
+    for problem in _protective_order_problems(spec):
         add(problem)
 
     # 3. Any other unanswered value anywhere (e.g. nested TBDs, extra fields)
@@ -816,4 +841,49 @@ def _entry_order_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
                 ok = False
             if not ok:
                 problems.append(RuleFreezeProblem(path, "INVALID", f"must be a quoted positive number of seconds, got {value!r}"))
+    return problems
+
+
+def _protective_order_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
+    """Round 14 values that the B0 protection code implements exactly; anything else is INVALID."""
+    from decimal import Decimal, InvalidOperation
+
+    from mnq_research import protection as pr
+
+    base = "protective_orders.parameters"
+    expectations = (
+        (f"{base}.protective_stop_order_type", pr.STOP_ORDER_TYPE),
+        (f"{base}.profit_target_order_type", pr.TARGET_ORDER_TYPE),
+        (f"{base}.protective_time_in_force", pr.PROTECTIVE_TIME_IN_FORCE),
+        (f"{base}.preferred_bracket_mode", pr.PREFERRED_BRACKET_MODE.value),
+        (f"{base}.same_bar_stop_target_policy", pr.SAME_BAR_POLICY),
+        ("protective_orders.deployment.server_side_protective_orders_required", True),
+        ("protective_orders.deployment.server_side_oco_required", True),
+        ("protective_orders.exit_outcomes", [o.value for o in pr.ExitOutcome]),
+        ("position_management.breakeven_rule", "NONE"),
+        ("position_management.trailing_stop_rule", "NONE"),
+    )
+    problems: list[RuleFreezeProblem] = []
+    for path, expected in expectations:
+        value = get_path(spec, path)
+        if value is _MISSING or is_unresolved(value):
+            continue
+        if value != expected or type(value) is not type(expected):
+            problems.append(RuleFreezeProblem(path, "INVALID", f"B0 implements only {expected!r}, got {value!r}"))
+    for name, minimum in (("protection_dispatch_deadline_milliseconds", 1), ("target_fill_trade_through_ticks", 0)):
+        value = get_path(spec, f"{base}.{name}")
+        if value is _MISSING or is_unresolved(value):
+            continue
+        if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+            problems.append(RuleFreezeProblem(f"{base}.{name}", "INVALID", f"must be a whole number >= {minimum}, got {value!r}"))
+    value = get_path(spec, f"{base}.protective_order_acknowledgement_timeout_seconds")
+    if value is not _MISSING and not is_unresolved(value):
+        try:
+            ok = isinstance(value, str) and Decimal(value).is_finite() and Decimal(value) > 0
+        except InvalidOperation:
+            ok = False
+        if not ok:
+            problems.append(
+                RuleFreezeProblem(f"{base}.protective_order_acknowledgement_timeout_seconds", "INVALID", f"must be a quoted positive number of seconds, got {value!r}")
+            )
     return problems

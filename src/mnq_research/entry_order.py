@@ -61,7 +61,7 @@ ENTRY_ORDER_TYPE = "MARKET"
 PROHIBITED_ENTRY_ORDER_TYPES = ("MARKET_IF_TOUCHED", "LIMIT", "STOP_LIMIT", "STOP_MARKET")
 LIVE_OR_PAPER_SUBMISSION_STATUS = "prohibited"
 RESEARCH_QUANTITY_LABELS = ("RESEARCH_QUANTITY_ONLY", "NOT_DEPLOYMENT_SIZING")
-PROTECTION_TASK_STATUS = "REQUIRED_PROTECTION_LAYER_NOT_IMPLEMENTED"
+PROTECTION_TASK_STATUS = "PROTECTION_REQUIRED"  # handed to the protective-order layer (protection.py)
 EMERGENCY_FLATTEN_STATUS = "EMERGENCY_FLATTEN_REQUIRED"
 
 
@@ -99,10 +99,14 @@ HALTING_OUTCOMES = frozenset(
         EntryOutcome.ENTRY_ORDER_STATE_UNKNOWN,
     }
 )
-# NOT_SUBMITTED reasons that halt the date (D-029 decision 4): unknown state, and a
-# stop that fails its integrity checks. Known temporary blocks do not halt; permanent
-# halts (safety, directional conflict) are already halted by their own rule.
-HALTING_NOT_SUBMITTED_PREFIXES = ("UNKNOWN:", "INVALID_STOP:")
+# NOT_SUBMITTED reasons that halt the date: unknown state (D-029 decision 4) and a
+# pre-submission safety halt such as an invalid structural stop (D-030 decision 2;
+# a known, deterministic failure, never ENTRY_ORDER_STATE_UNKNOWN). Known temporary
+# blocks do not halt; permanent halts (safety, directional conflict) are already
+# halted by their own rule.
+INVALID_STRUCTURAL_STOP = "INVALID_STRUCTURAL_STOP"
+PRE_SUBMISSION_SAFETY_HALT = "PRE_SUBMISSION_SAFETY_HALT"
+HALTING_NOT_SUBMITTED_PREFIXES = ("UNKNOWN:", PRE_SUBMISSION_SAFETY_HALT)
 
 
 class FillSource(Enum):
@@ -605,9 +609,9 @@ class EntryOrder:
 
     # ------------------------------------------------------------------ fills, slippage, actual risk, protection
     def _fill_beyond_stop(self) -> bool:
-        avg = self.average_fill_price
-        stop = Fraction(self.candidate.planned_stop_price)
-        return avg is not None and ((avg <= stop) if self.side is Side.LONG else (avg >= stop))
+        """D-030: ANY authoritative fill at or beyond the structural stop (not only the average)."""
+        stop = self.candidate.planned_stop_price
+        return any((f.price <= stop) if self.side is Side.LONG else (f.price >= stop) for f in self.fills)
 
     def _update_protection(self, at: pd.Timestamp) -> None:
         if self._fill_beyond_stop() and not self.emergency_flatten_required:
@@ -615,7 +619,7 @@ class EntryOrder:
             self.emergency_flatten_required = True
             self._reason("ENTRY_FILLED_AT_OR_BEYOND_INVALIDATION", "EMERGENCY_FLATTEN_REQUIRED")
             self._act(EMERGENCY_FLATTEN_ACTIONS)
-            self._anomaly(at, "ENTRY_FILLED_AT_OR_BEYOND_INVALIDATION", f"average fill {self.average_fill_price}")
+            self._anomaly(at, "ENTRY_FILLED_AT_OR_BEYOND_INVALIDATION", f"fills {[str(f.price) for f in self.fills]}")
         created = self.protection_task.created_utc if self.protection_task else at
         risk = self.actual_risk_points_per_contract  # None when only a reconciled position is known: fail closed
         self.protection_task = ProtectionTask(
@@ -820,7 +824,10 @@ class EntryOrderBook:
             blockers.append("DAILY_ENTRY_HALT")
         order = EntryOrder(candidate, self.params, created_at, self.params.research_quantity_contracts, order_id=f"{candidate.candidate_id}:ENTRY")
         order._log(created_at, "ORDER_CREATED", f"MARKET {order.side.value} {order.quantity} (research quantity)")
-        problems = blockers + list(stop_validity_problems(candidate, self.params))
+        stop_problems = list(stop_validity_problems(candidate, self.params))
+        if stop_problems:
+            stop_problems = [INVALID_STRUCTURAL_STOP, PRE_SUBMISSION_SAFETY_HALT, *stop_problems]
+        problems = blockers + stop_problems
         if problems:
             order._finalize(created_at, EntryOutcome.NOT_SUBMITTED_INELIGIBLE, *problems)
         self.orders.append(order)

@@ -89,7 +89,7 @@ and the candidate is used up.
 | A temporary, known block (e.g. news entry protection) | none; a completely fresh setup may trade after the block ends |
 | A permanent safety halt or directional conflict | the day is already halted by that rule |
 | Any `UNKNOWN` eligibility or system state | **halt** for the rest of the date |
-| A stop that fails its integrity checks | **halt** (integrity failure; awaiting your confirmation) |
+| A structural stop that fails validation | **halt**; recorded as `INVALID_STRUCTURAL_STOP` and `PRE_SUBMISSION_SAFETY_HALT` (D-030). The order state is known, so this is never "unknown" |
 
 ### Acknowledgement (D-029 decision 1)
 
@@ -184,8 +184,11 @@ risk is 11.50 points, not 10.50. A target at 20026.00 is then worth about
   zone, and on the protective side of the planned entry. Otherwise the order
   is not submitted.
 * The stop is **never** resized, compressed, widened or recalculated.
-* **Fill at or beyond the stop (D-029 decision 5).** This means a long
-  average fill ≤ the stop, or a short average fill ≥ the stop. The position
+* **Fill at or beyond the stop (D-029 decision 5, D-030 decision 4).** This
+  means **any** authoritative fill at or beyond the stop: a long fill ≤ the
+  stop, or a short fill ≥ the stop. The emergency-flatten flag is
+  **latched**. Later fills that improve the average never reset it; they
+  remain real, and they are included in the flatten. The position
   is never left unprotected on purpose, and no stop is placed on the wrong
   side of the fill. Instead:
   * `ENTRY_FILLED_AT_OR_BEYOND_INVALIDATION` and `EMERGENCY_FLATTEN_REQUIRED`
@@ -222,11 +225,14 @@ risk is 11.50 points, not 10.50. A target at 20026.00 is then worth about
 
 ## Protection
 
-Any fill creates a **required protection task**: the confirmed quantity, the
-frozen stop and the frozen target. Its status is
-`REQUIRED_PROTECTION_LAYER_NOT_IMPLEMENTED`. Until that layer exists,
-`live_or_paper_order_submission: prohibited` stands. The validator rejects
-any other value.
+Any positive authoritative fill creates `PROTECTION_REQUIRED`. The Round 14
+protective layer (simulation only) is described in `PROTECTIVE_ORDERS.md`.
+`live_or_paper_order_submission: prohibited` still stands, and the validator
+rejects any other value.
+
+**State loss after a clean fill (D-030):** the order state becomes UNKNOWN.
+Everything earlier is kept: the fills, the clean-fill event, the quantity,
+the used daily allowance, the protection task and every audit event.
 
 ## Audit
 
