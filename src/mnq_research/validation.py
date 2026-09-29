@@ -212,6 +212,11 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "protective_orders.mandatory_session_flatten",
     "protective_orders.exit_outcomes",
     "protective_orders.exit_record",
+    "protective_orders.mixed_exits",
+    "protective_orders.late_fill_after_close",
+    "protective_orders.oco_link_clock",
+    "protective_orders.cancellation_unknown",
+    "protective_orders.position_mismatch",
     # Execution eligibility integration (D-028)
     "execution_eligibility_integration.status",
     "execution_eligibility_integration.requirement",
@@ -862,6 +867,7 @@ def _protective_order_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
         ("protective_orders.exit_outcomes", [o.value for o in pr.ExitOutcome]),
         ("position_management.breakeven_rule", "NONE"),
         ("position_management.trailing_stop_rule", "NONE"),
+        ("position_management.scaling_in_out", "NONE"),
     )
     problems: list[RuleFreezeProblem] = []
     for path, expected in expectations:

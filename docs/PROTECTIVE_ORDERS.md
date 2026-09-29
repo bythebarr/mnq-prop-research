@@ -118,6 +118,40 @@ tests.
 
 Quotes and local estimates never trigger or fill anything.
 
+## D-031 refinements
+
+* **Mixed exits.** If the stop and the target each fill part of the position,
+  the trade is `MIXED_STOP_TARGET_EXIT`, never named after whichever fill
+  came last. `final_flattening_leg` then records which leg made it flat:
+  * STOP;
+  * TARGET;
+  * EMERGENCY: a session backstop, protection-failure or entry-invalidation
+    flatten;
+  * OTHER: a news or manual flatten.
+
+  Every partial exit is kept with its order ID, quantity, price, time, exit
+  type, gross realized P&L (points and USD) and the position left
+  afterwards.
+* **Late fill after close.** The trade becomes `UNKNOWN_EXIT_STATE`, and the
+  original close stays in the history. The late fill is logged as its own
+  anomaly. Then: reconcile, detect a reverse position, flatten any
+  unintended exposure, cancel remaining orders, halt.
+* **Cancellation not confirmed within 2 s**
+  (`PROTECTIVE_ORDER_CANCELLATION_UNKNOWN`). First query the position, then
+  act:
+  * **still open:** emergency flatten, keeping the stop;
+  * **already flat:** no second flatten order. Keep cancelling and
+    reconciling; any later fill is unintended exposure and is flattened.
+
+  Either way, the day halts.
+* **Position mismatch** (quantity, side, contract or account): the result is
+  `UNKNOWN_EXIT_STATE` and `POSITION_RECONCILIATION_REQUIRED`. The broker's
+  position is treated as the real exposure, and the disagreement is logged
+  permanently.
+* **Fixed management.** No breakeven, trailing, scale-out, profit lock or
+  discretionary stop change. Any of these could only be studied later, as a
+  registered change.
+
 ## How a trade can end
 
 * TARGET_FILLED
@@ -127,6 +161,7 @@ Quotes and local estimates never trigger or fill anything.
 * PROTECTION_FAILURE_FLATTEN
 * ENTRY_INVALIDATION_FLATTEN
 * MANUAL_SAFETY_FLATTEN
+* MIXED_STOP_TARGET_EXIT
 * UNKNOWN_EXIT_STATE
 
 Every record keeps:

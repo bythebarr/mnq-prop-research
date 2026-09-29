@@ -787,6 +787,31 @@ permits an entry."
 
 ## 11. Invalidation, stop, target and position management
 
+### `protective_orders.mixed_exits`
+*(Added in D-031.)*
+**Question:** How is a trade named when both the stop and the target filled parts of it?
+**Illustrative only:** "MIXED_STOP_TARGET_EXIT, plus the final flattening leg."
+
+### `protective_orders.late_fill_after_close`
+*(Added in D-031.)*
+**Question:** What happens if a sibling fills after the position was confirmed flat?
+**Illustrative only:** "Unknown exit state; reconcile and flatten."
+
+### `protective_orders.oco_link_clock`
+*(Added in D-031.)*
+**Question:** When does the OCO link's confirmation clock start?
+**Illustrative only:** "At dispatch (atomic) or after the target is confirmed."
+
+### `protective_orders.cancellation_unknown`
+*(Added in D-031.)*
+**Question:** What if cancelling a protective order can't be confirmed?
+**Illustrative only:** "Query; flatten only if a position is still open."
+
+### `protective_orders.position_mismatch`
+*(Added in D-031.)*
+**Question:** What if the broker's position disagrees with ours?
+**Illustrative only:** "Treat the broker's as real; reconcile; no new entries."
+
 ### `protective_orders.parameters`
 *(Added in Round 14.)*
 **Question:** Which order types, time in force, dispatch deadline, acknowledgement timeout, bracket mode, target trade-through and same-bar policy protect a position?

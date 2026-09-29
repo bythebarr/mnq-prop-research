@@ -39,6 +39,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
+from fractions import Fraction
 from typing import Any, Iterable, Mapping
 
 import pandas as pd
@@ -49,6 +50,7 @@ from mnq_research.entry_order import (
     EntryOrder,
     EntryOrderParams,
     FillSource,
+    OperationalAnomaly,
     stop_validity_problems,
 )
 from mnq_research.structural_levels import TICK
@@ -112,6 +114,7 @@ class ComponentStatus(str, Enum):
     CANCELLED = "CANCELLED"
     FILLED = "FILLED"
     FAILED = "FAILED"
+    CANCELLATION_UNKNOWN = "CANCELLATION_UNKNOWN"  # D-031: may still be live; query and reconcile
 
 
 class PendingReason(str, Enum):
@@ -135,7 +138,23 @@ class ExitOutcome(str, Enum):
     PROTECTION_FAILURE_FLATTEN = "PROTECTION_FAILURE_FLATTEN"
     ENTRY_INVALIDATION_FLATTEN = "ENTRY_INVALIDATION_FLATTEN"
     MANUAL_SAFETY_FLATTEN = "MANUAL_SAFETY_FLATTEN"
+    MIXED_STOP_TARGET_EXIT = "MIXED_STOP_TARGET_EXIT"  # D-031: both stop and target filled portions
     UNKNOWN_EXIT_STATE = "UNKNOWN_EXIT_STATE"
+
+
+class FlatteningLeg(str, Enum):
+    """D-031: which leg made the position flat (recorded alongside the outcome)."""
+
+    STOP = "STOP"
+    TARGET = "TARGET"
+    EMERGENCY = "EMERGENCY"
+    OTHER = "OTHER"
+
+
+# Market flattens driven by a safety failure or the session backstop count as EMERGENCY legs.
+EMERGENCY_FLATTEN_OUTCOMES = frozenset(
+    {ExitOutcome.SESSION_EMERGENCY_FLATTEN, ExitOutcome.PROTECTION_FAILURE_FLATTEN, ExitOutcome.ENTRY_INVALIDATION_FLATTEN}
+)
 
 
 # Flatten reasons that a caller may start deliberately (failures start their own).
@@ -152,7 +171,15 @@ EMERGENCY_ACTIONS = (
     "DO_NOT_WIDEN_OR_RECREATE_STRATEGY_RISK",
 )
 TARGET_FAILURE_ACTIONS = ("CANCEL_TARGET_AND_RECONCILE", "PRESERVE_STOP_UNTIL_FLAT_CONFIRMED")
-UNKNOWN_EXIT_ACTIONS = ("RECONCILE_IMMEDIATELY", "FLATTEN_ANY_UNINTENDED_EXPOSURE", "CRITICAL_ALERT", "HALT_NEW_ENTRIES_FOR_TRADING_DATE")
+UNKNOWN_EXIT_ACTIONS = (
+    "RECONCILE_BROKER_POSITION",
+    "DETECT_UNINTENDED_REVERSE_POSITION",
+    "FLATTEN_ANY_UNINTENDED_EXPOSURE",
+    "CANCEL_REMAINING_ORDERS",
+    "CRITICAL_ALERT",
+    "HALT_NEW_ENTRIES_FOR_TRADING_DATE",
+)
+CANCELLATION_UNKNOWN_ACTIONS = ("QUERY_AUTHORITATIVE_POSITION_AND_ORDERS", "CONTINUE_CANCELLING_AND_RECONCILING", "HALT_NEW_ENTRIES_FOR_TRADING_DATE")
 
 
 def _whole(value: Any, name: str, minimum: int) -> int:
@@ -172,6 +199,7 @@ class ProtectionParams:
     target_fill_trade_through_ticks: int
     same_bar_policy: str
     live_or_paper_order_submission: str
+    point_value_usd: Decimal
     specification_version: str
     configuration_hash: str
 
@@ -194,6 +222,7 @@ class ProtectionParams:
             _whole(p["target_fill_trade_through_ticks"], "target_fill_trade_through_ticks", 0),
             p["same_bar_stop_target_policy"],
             spec["entry_order_lifecycle"]["protective_order_dependency"]["live_or_paper_order_submission"],
+            Decimal(str(spec["instrument"]["point_value_usd"])),
             str(spec["specification"]["version"]),
             rule_spec_hash(dict(spec)),
         )
@@ -297,7 +326,7 @@ class ProtectiveComponent:
     @property
     def live(self) -> bool:
         """Could still execute: working or awaiting confirmation (including a pending cancel)."""
-        return self.status in (ComponentStatus.PENDING, ComponentStatus.CONFIRMED)
+        return self.status in (ComponentStatus.PENDING, ComponentStatus.CONFIRMED, ComponentStatus.CANCELLATION_UNKNOWN)
 
     def request(self, at: pd.Timestamp, reason: PendingReason) -> None:
         self.status, self.pending_reason, self.pending_since_utc = ComponentStatus.PENDING, reason, at
@@ -307,10 +336,16 @@ class ProtectiveComponent:
 
 @dataclass(frozen=True)
 class ExitFill:
+    """One partial or full exit, preserved individually (D-031)."""
+
     timestamp_utc: pd.Timestamp
     source: ExitSource
     quantity: int
     price: Decimal
+    order_id: str
+    realized_gross_pnl_points: Fraction  # (exit - actual average entry) x quantity, signed for the side
+    realized_gross_pnl_usd: Fraction  # before commissions and slippage costs (cost model not frozen)
+    remaining_position_after: int
 
 
 @dataclass
@@ -338,6 +373,10 @@ class ProtectiveBracket:
     exit_fills: list[ExitFill] = field(default_factory=list)
     events: list[tuple[str, str, str]] = field(default_factory=list)
     _synced_extra: int = 0
+    cancellation_unknown: bool = False
+    final_flattening_leg: FlatteningLeg | None = None
+    broker_reported_exposure: tuple[int, str, str, str] | None = None  # (quantity, side, contract, account)
+    _anomalies: list[OperationalAnomaly] = field(default_factory=list)
     stop: ProtectiveComponent = field(init=False)
     target: ProtectiveComponent = field(init=False)
     oco: ProtectiveComponent = field(init=False)
@@ -355,7 +394,15 @@ class ProtectiveBracket:
     # ------------------------------------------------------------------ helpers
     @property
     def halts_trading_date(self) -> bool:
-        return self.emergency_flatten_required or self.exit_state_unknown
+        return self.emergency_flatten_required or self.exit_state_unknown or self.cancellation_unknown
+
+    @property
+    def anomalies(self) -> tuple[OperationalAnomaly, ...]:
+        return tuple(self._anomalies)
+
+    def _anomaly(self, at: pd.Timestamp, code: str, detail: str = "") -> None:
+        self._anomalies.append(OperationalAnomaly(at, code, detail))
+        self._log(at, "OPERATIONAL_ANOMALY", f"{code} {detail}".strip())
 
     @property
     def protection_active(self) -> bool:
@@ -404,6 +451,7 @@ class ProtectiveBracket:
         self.exit_state_unknown = True
         self.unintended_exposure_quantity += excess
         self._reason(reason)
+        self._anomaly(at, reason, f"unintended exposure +{excess}")
         self._act(UNKNOWN_EXIT_ACTIONS)
         self._log(at, "UNKNOWN_EXIT_STATE", reason)
         if self.state is ProtectionState.TRADE_CLOSED:
@@ -524,7 +572,7 @@ class ProtectiveBracket:
 
     def on_cancel_confirmed(self, at: pd.Timestamp, kind: Component) -> None:
         c = self._component(kind)
-        if c.status is ComponentStatus.PENDING and c.pending_reason is PendingReason.CANCEL:
+        if (c.status is ComponentStatus.PENDING and c.pending_reason is PendingReason.CANCEL) or c.status is ComponentStatus.CANCELLATION_UNKNOWN:
             c.status, c.pending_reason, c.pending_since_utc = ComponentStatus.CANCELLED, None, None
             self._log(at, f"{kind.value}_CANCELLED")
             self._try_close(at)
@@ -563,12 +611,17 @@ class ProtectiveBracket:
                 if c.pending_reason is PendingReason.ENTRY_QUANTITY_SYNC:
                     c.status, c.failure = ComponentStatus.FAILED, "QUANTITY_SYNC_TIMEOUT"
                     self._emergency(expired, "PROTECTION_QUANTITY_UNKNOWN")
-                elif c.pending_reason in (PendingReason.EXIT_REDUCTION, PendingReason.CANCEL) and self.exit_fills:
+                elif c.pending_reason is PendingReason.EXIT_REDUCTION or (c.pending_reason is PendingReason.CANCEL and self.open_quantity > 0 and self.exit_fills):
+                    # A confirmed remainder is still open: emergency flatten it.
                     c.status, c.failure = ComponentStatus.FAILED, "OCO_RECONCILIATION_TIMEOUT"
                     self._emergency(expired, "OCO_RECONCILIATION_FAILURE")
                 elif c.pending_reason is PendingReason.CANCEL:
-                    c.status, c.failure = ComponentStatus.FAILED, "CANCEL_TIMEOUT"
-                    self._emergency(expired, f"{c.kind.value}_CANCEL_NOT_CONFIRMED")
+                    # D-031: not an automatic flatten. Query first; act on the authoritative position.
+                    c.status, c.failure, c.pending_since_utc = ComponentStatus.CANCELLATION_UNKNOWN, "CANCEL_TIMEOUT", None
+                    self.cancellation_unknown = True
+                    self._reason("PROTECTIVE_ORDER_CANCELLATION_UNKNOWN")
+                    self._act(CANCELLATION_UNKNOWN_ACTIONS)
+                    self._anomaly(expired, "PROTECTIVE_ORDER_CANCELLATION_UNKNOWN", c.kind.value)
                 else:
                     self._fail(expired, c.kind, "ACKNOWLEDGEMENT_TIMEOUT")
 
@@ -598,16 +651,27 @@ class ProtectiveBracket:
             return
         if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity < 1:
             raise ValueError("exit quantity must be a whole number >= 1")
-        self.exit_fills.append(ExitFill(at, source, quantity, price))
-        self._log(at, "EXIT_FILL", f"{source.value} {quantity} @ {price}")
+        late = self.flat_confirmed_utc is not None
+        excess = quantity if late else max(quantity - self.open_quantity, 0)
+        remaining = max(self.open_quantity - quantity, 0)
+        sign = Fraction(1) if self.requirement.side is Side.LONG else -Fraction(1)
+        pnl_points = sign * (Fraction(price) - Fraction(self.requirement.actual_average_entry)) * quantity
+        self.exit_fills.append(
+            ExitFill(at, source, quantity, price, f"{self.requirement.position_id}:{source.value}", pnl_points,
+                     pnl_points * Fraction(self.params.point_value_usd), remaining)
+        )
+        self._log(at, "EXIT_FILL", f"{source.value} {quantity} @ {price}; remaining {remaining}")
         sibling = {ExitSource.STOP: self.stop, ExitSource.TARGET: self.target}.get(source)
         if sibling is not None:
             sibling.filled_quantity += quantity
-        if self.flat_confirmed_utc is not None or quantity > self.open_quantity:
-            excess = quantity if self.flat_confirmed_utc is not None else quantity - self.open_quantity
-            self.open_quantity = max(self.open_quantity - quantity, 0)
-            # Contradictory: this would reverse the account. Record UNKNOWN, reconcile, flatten the excess.
-            self._unknown_exit(at, "LATE_OR_EXCESS_SIBLING_FILL_REVERSE_EXPOSURE", excess)
+        if excess:
+            self.open_quantity = remaining
+            # Contradictory: this may reverse the account. UNKNOWN, reconcile, flatten the excess, cancel the rest.
+            code = "LATE_SIBLING_FILL_AFTER_FLAT" if late else "EXCESS_SIBLING_FILL_REVERSE_EXPOSURE"
+            self._unknown_exit(at, code, excess)
+            for c in (self.stop, self.target):
+                if c.status in (ComponentStatus.PENDING, ComponentStatus.CONFIRMED) and c.pending_reason is not PendingReason.CANCEL:
+                    c.request(at, PendingReason.CANCEL)
             return
         self.open_quantity -= quantity
         if self.open_quantity == 0:
@@ -636,14 +700,23 @@ class ProtectiveBracket:
         if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity < 0:
             raise ValueError("position quantity must be a whole number >= 0")
         r = self.requirement
-        if contract != r.contract or account_id != r.account_id or (quantity > 0 and side is not r.side):
-            self._unknown_exit(at, "POSITION_REPORT_SIDE_CONTRACT_OR_ACCOUNT_MISMATCH", quantity)
-            return
-        expected = self.open_quantity
-        if quantity != expected:
-            self._unknown_exit(at, f"POSITION_REPORT_DIFFERS:{quantity}!={expected}", max(quantity - expected, 0))
+        identity_ok = contract == r.contract and account_id == r.account_id and (quantity == 0 or side is r.side)
+        if not identity_ok or quantity != self.open_quantity:
+            # D-031: the broker position is ACTUAL exposure for safety; the disagreement is logged permanently.
+            self.broker_reported_exposure = (quantity, None if side is None else side.value, contract, account_id)
+            self._reason("POSITION_RECONCILIATION_REQUIRED")
+            detail = f"broker {quantity} {side} {contract} {account_id}; expected {self.open_quantity} {r.side.value} {r.contract} {r.account_id}"
+            self._unknown_exit(at, "POSITION_MISMATCH", quantity if not identity_ok else max(quantity - self.open_quantity, 0))
+            self._log(at, "POSITION_MISMATCH_DETAIL", detail)
+            if identity_ok:
+                self.open_quantity = quantity
+            if quantity > 0:
+                self._emergency(at, "BROKER_REPORTED_EXPOSURE_AFTER_MISMATCH")
             return
         self._log(at, "POSITION_REPORT", str(quantity))
+        if quantity > 0 and self.cancellation_unknown:
+            # D-031: a position remains while a cancellation is unknown -> continue/invoke emergency flattening.
+            self._emergency(at, "OPEN_POSITION_WITH_PROTECTIVE_ORDER_CANCELLATION_UNKNOWN")
         if quantity == 0 and self.flat_confirmed_utc is None:
             self.flat_confirmed_utc = at
             for c in (self.stop, self.target):
@@ -656,8 +729,19 @@ class ProtectiveBracket:
             return
         if any(c.live for c in (self.stop, self.target)):
             return  # every sibling must be confirmed terminal first
+        sources = {f.source for f in self.exit_fills}
+        if self.closing_source is ExitSource.STOP:
+            self.final_flattening_leg = FlatteningLeg.STOP
+        elif self.closing_source is ExitSource.TARGET:
+            self.final_flattening_leg = FlatteningLeg.TARGET
+        elif self.flatten_reason in EMERGENCY_FLATTEN_OUTCOMES:
+            self.final_flattening_leg = FlatteningLeg.EMERGENCY
+        else:
+            self.final_flattening_leg = FlatteningLeg.OTHER
         if self.exit_state_unknown:
             outcome = ExitOutcome.UNKNOWN_EXIT_STATE
+        elif {ExitSource.STOP, ExitSource.TARGET} <= sources:
+            outcome = ExitOutcome.MIXED_STOP_TARGET_EXIT
         elif self.closing_source is ExitSource.STOP:
             outcome = ExitOutcome.STOP_FILLED
         elif self.closing_source is ExitSource.TARGET:
@@ -684,7 +768,22 @@ class ProtectiveBracket:
             "frozen_target_price": str(r.frozen_target_price),
             "state": self.state.value,
             "exit_outcome": None if self.exit_outcome is None else self.exit_outcome.value,
-            "exit_fills": [[f.timestamp_utc.isoformat(), f.source.value, f.quantity, str(f.price)] for f in self.exit_fills],
+            "exit_fills": [
+                {
+                    "order_id": f.order_id,
+                    "timestamp_utc": f.timestamp_utc.isoformat(),
+                    "exit_type": f.source.value,
+                    "quantity": f.quantity,
+                    "price": str(f.price),
+                    "realized_gross_pnl_points": str(f.realized_gross_pnl_points),
+                    "realized_gross_pnl_usd": str(f.realized_gross_pnl_usd),
+                    "remaining_position_after": f.remaining_position_after,
+                }
+                for f in self.exit_fills
+            ],
+            "final_flattening_leg": None if self.final_flattening_leg is None else self.final_flattening_leg.value,
+            "broker_reported_exposure": None if self.broker_reported_exposure is None else list(self.broker_reported_exposure),
+            "operational_anomalies": [[a.timestamp_utc.isoformat(), a.code, a.detail] for a in self._anomalies],
             "flat_confirmed_utc": None if self.flat_confirmed_utc is None else self.flat_confirmed_utc.isoformat(),
             "closed_utc": None if self.closed_utc is None else self.closed_utc.isoformat(),
             "reasons": list(self.reasons),

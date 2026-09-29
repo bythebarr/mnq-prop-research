@@ -777,5 +777,57 @@ total. In the 39 mutation checks, 3 mutations initially survived:
    `trailing_stop_rule` are `NONE`, and both intrabar same-bar fields are
    filled.
 **Reversible:** yes.
-**Status:** D-030 CONFIRMED. Round 14 rules CONFIRMED by the owner. Items 1–6
-PENDING.
+**Status:** D-030 CONFIRMED. Round 14 rules CONFIRMED. Items 1–6 CONFIRMED
+(D-031), item 1 modified and item 4 refined; see D-032.
+
+## D-032 — D-031 confirmations and the critical-path instruction
+**Decision (rule owner, 2026-09-29):**
+1. **Mixed exits** → `MIXED_STOP_TARGET_EXIT`, plus `final_flattening_leg`
+   (STOP / TARGET / EMERGENCY / OTHER). Every partial exit keeps its order
+   ID, quantity, price, time, type, realized P&L and remaining position.
+2. **A late fill after close** → `UNKNOWN_EXIT_STATE`. The close event is
+   kept. The late fill is a separate anomaly. Then reconcile, detect a
+   reverse position, flatten, cancel remaining orders, halt.
+3. **OCO link clock** confirmed: it starts at dispatch (atomic), or at target
+   confirmation (stop-first).
+4. **Cancellation not confirmed** → `PROTECTIVE_ORDER_CANCELLATION_UNKNOWN`,
+   then query. If a position is open: emergency flatten, keeping the stop.
+   If already flat: no duplicate flatten order; keep reconciling; any later
+   fill is flattened.
+5. **Position mismatch** → `UNKNOWN_EXIT_STATE` and
+   `POSITION_RECONCILIATION_REQUIRED`. The broker position counts as actual
+   exposure; the disagreement is logged permanently; no new entries.
+6. **Breakeven and trailing** are `NONE`, and no scale-out or profit lock
+   (`scaling_in_out: NONE`, filled from this decision).
+7. **Unresolved intrabar order** → stop first.
+8. **Critical path:** after D-031, no more optional strategy logic. Only
+   costs/slippage, trade accounting, data ingestion and end-to-end replay,
+   leading to Frozen Baseline Test 001.
+
+**Implementation:**
+- `protection.py`:
+  - `ExitOutcome.MIXED_STOP_TARGET_EXIT` and `FlatteningLeg`.
+  - `ExitFill` carries the order ID, gross realized P&L (points and USD,
+    exact fractions, costs unresolved) and the remaining position.
+  - An immutable anomaly list.
+  - `ComponentStatus.CANCELLATION_UNKNOWN`, which counts as possibly live,
+    so the trade cannot close until it is resolved.
+  - Position-report mismatches record the broker's exposure and adopt its
+    quantity.
+- `point_value_usd` is read from `instrument`.
+- New spec fields (`protective_orders.mixed_exits`, `…late_fill_after_close`,
+  `…oco_link_clock`, `…cancellation_unknown`, `…position_mismatch`), with the
+  validator and guide updated.
+- **Critical-path report:** `docs/CRITICAL_PATH.md`.
+
+**Testing:** 8 D-031 tests, 277 in total. Of 12 mutation checks, 2 survived
+at first (the P&L sign on a short, and cancelling remaining orders on an
+excess fill). Tests were added, and all are now caught.
+
+**Pending owner confirmation:**
+1. **Mapping of `final_flattening_leg`.** Session-backstop,
+   protection-failure and entry-invalidation flattens count as EMERGENCY.
+   News and manual flattens count as OTHER.
+2. **`scaling_in_out: NONE`**, filled from decision 6.
+**Reversible:** yes.
+**Status:** D-031 CONFIRMED. Items 1–2 PENDING.

@@ -110,6 +110,7 @@ mnq-prop-research/
 │   ├── TRADE_GEOMETRY.md      ← plain-English geometry and selection rules
 │   ├── ORDER_LIFECYCLE.md     ← plain-English entry-order lifecycle (simulation only)
 │   ├── PROTECTIVE_ORDERS.md   ← plain-English stop/target bracket (simulation only)
+│   ├── CRITICAL_PATH.md       ← what remains, by milestone, to reach Baseline Test 001
 │   └── DECISIONS.md           ← architecture decisions and rationale
 ├── data/                      ← NOT committed to Git (except placeholders)
 │   ├── raw/                   ← vendor files exactly as received

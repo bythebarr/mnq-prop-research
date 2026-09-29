@@ -1391,8 +1391,46 @@ protective_orders:
     authoritatively resolved where operationally safe, reconcile fills and
     orders, confirm zero position and that no sibling can reopen exposure.
     Live sequencing must be proven by adapter fault-injection tests.
-  exit_outcomes: [TARGET_FILLED, STOP_FILLED, SCHEDULED_NEWS_FLATTEN, SESSION_EMERGENCY_FLATTEN, PROTECTION_FAILURE_FLATTEN, ENTRY_INVALIDATION_FLATTEN, MANUAL_SAFETY_FLATTEN, UNKNOWN_EXIT_STATE]
-  exit_record: Every terminal record keeps actual prices, quantities, timestamps, costs when available, and the exit reason.
+  exit_outcomes: [TARGET_FILLED, STOP_FILLED, SCHEDULED_NEWS_FLATTEN, SESSION_EMERGENCY_FLATTEN, PROTECTION_FAILURE_FLATTEN, ENTRY_INVALIDATION_FLATTEN, MANUAL_SAFETY_FLATTEN, MIXED_STOP_TARGET_EXIT, UNKNOWN_EXIT_STATE]
+  exit_record: >
+    Every terminal record keeps actual prices, quantities, timestamps, costs
+    when available, and the exit reason. D-031: every partial exit keeps its
+    order ID, quantity, price, timestamp, exit type, realized P&L and the
+    remaining position afterwards.
+  # --- D-031 confirmations (rule owner, 2026-09-29) ---
+  mixed_exits: >
+    If both the stop and the target fill portions of one position, the
+    outcome is MIXED_STOP_TARGET_EXIT, never named only after the final fill.
+    Also record final_flattening_leg: STOP, TARGET, EMERGENCY (session
+    backstop, protection-failure or entry-invalidation flatten) or OTHER
+    (news or manual flatten).
+  late_fill_after_close: >
+    A sibling fill after authoritative flat confirmation changes the current
+    classification to UNKNOWN_EXIT_STATE; the original close event stays
+    unchanged in the immutable history. Reconcile the broker position, detect
+    any unintended reverse position, flatten unintended exposure, cancel
+    remaining orders, halt new entries, and record the late-fill anomaly
+    separately.
+  oco_link_clock: >
+    Atomic bracket: starts at bracket dispatch. Stop-first workflow: starts
+    when the target is authoritatively confirmed and the link can validly be
+    created or verified. The link must be confirmed within 2.000 s of that
+    start.
+  cancellation_unknown: >
+    A protective-order cancellation not confirmed within 2.000 s ->
+    PROTECTIVE_ORDER_CANCELLATION_UNKNOWN; query authoritative position and
+    orders; halt new entries. Position still open -> continue or invoke
+    emergency flattening, keeping valid stop protection while operationally
+    safe. Position already authoritatively flat -> no further flatten order;
+    keep cancelling and reconciling the possibly live order; any later fill
+    is unintended exposure and is flattened. Never a duplicate emergency
+    market order merely because a cancellation is unknown.
+  position_mismatch: >
+    Any authoritative broker position disagreeing with the expected quantity,
+    side, contract or account -> UNKNOWN_EXIT_STATE and
+    POSITION_RECONCILIATION_REQUIRED. The broker position is treated as the
+    actual exposure for safety; the disagreement is logged permanently; no
+    new entry that day.
 
 # --- Structural invalidation ------------------------------------------------------------------------------------------
 structural_invalidation:
@@ -1513,7 +1551,7 @@ execution_eligibility_integration:
 position_management:
   contracts_per_trade: TBD
   sizing_method: TBD
-  scaling_in_out: TBD
+  scaling_in_out: NONE   # D-031: no scale-in, scale-out or profit lock; later only as a registered change
   breakeven_rule: NONE   # Round 14: never moved to breakeven
   trailing_stop_rule: NONE   # Round 14: never trailed, widened, tightened or recalculated
   time_based_exit: TBD

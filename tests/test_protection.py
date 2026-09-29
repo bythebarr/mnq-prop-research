@@ -292,7 +292,11 @@ def test_p13_a_target_fill_cancels_the_stop():
     close_flat(b, FILL + 5100 * MS, K.STOP)
     assert b.exit_outcome is X.TARGET_FILLED
     record = b.exit_record()
-    assert record["exit_fills"] == [[(FILL + 5000 * MS).isoformat(), "TARGET", 1, "20026.00"]]
+    (exit_fill,) = record["exit_fills"]
+    assert exit_fill["timestamp_utc"] == (FILL + 5000 * MS).isoformat() and exit_fill["exit_type"] == "TARGET"
+    assert (exit_fill["quantity"], exit_fill["price"], exit_fill["remaining_position_after"]) == (1, "20026.00", 0)
+    assert exit_fill["realized_gross_pnl_points"] == "31/2" and exit_fill["realized_gross_pnl_usd"] == "31"  # 15.50 pts x $2
+    assert record["final_flattening_leg"] == "TARGET"
     assert record["costs"] == "UNRESOLVED_UNTIL_COST_MODEL_FROZEN" and record["closed_utc"]
 
 
@@ -316,7 +320,8 @@ def test_p15_a_sibling_cannot_intentionally_reverse_the_position():
     _, _, b = active()
     b.on_exit_fill(FILL + 5000 * MS, E.TARGET, 2, TARGET, AUTH)  # more than the open quantity
     assert b.exit_state_unknown and b.unintended_exposure_quantity == 1 and b.open_quantity == 0
-    assert {"RECONCILE_IMMEDIATELY", "FLATTEN_ANY_UNINTENDED_EXPOSURE"} <= set(b.required_actions)
+    assert b.stop.pending_reason is PendingReason.CANCEL  # remaining orders are cancelled
+    assert {"RECONCILE_BROKER_POSITION", "FLATTEN_ANY_UNINTENDED_EXPOSURE"} <= set(b.required_actions)
 
 
 def test_p16_late_sibling_fills_create_contradiction_handling():
@@ -496,7 +501,7 @@ def test_p28_no_live_or_paper_execution_is_enabled():
             imported |= {a.name.split(".")[0] for a in node.names}
         elif isinstance(node, ast.ImportFrom):
             imported.add((node.module or "").split(".")[0])
-    assert imported <= {"__future__", "dataclasses", "decimal", "enum", "typing", "pandas", "mnq_research"}
+    assert imported <= {"__future__", "dataclasses", "decimal", "enum", "fractions", "typing", "pandas", "mnq_research"}
 
 
 def test_p29_deployment_stays_blocked_pending_capability_verification():
@@ -610,3 +615,131 @@ def test_resyncing_without_new_fills_changes_nothing_and_mismatched_quantities_a
     b.target.confirmed_quantity = 2  # defensive: any disagreement blocks PROTECTION_ACTIVE
     b.on_oco_confirmed(FILL + 70 * MS)
     assert b.state is P.PROTECTION_PENDING
+
+
+# =========================================================================== D-031 confirmations
+
+
+def test_d031_01_mixed_exits_are_named_mixed_and_every_leg_is_preserved():
+    _, _, b = active(3)
+    b.on_exit_fill(FILL + 5000 * MS, E.TARGET, 1, TARGET, AUTH)
+    b.on_order_confirmed(FILL + 5050 * MS, K.STOP, report(K.STOP, 2))
+    b.on_exit_fill(FILL + 9000 * MS, E.STOP, 2, D("19999.50"), AUTH)  # the stop makes it flat
+    close_flat(b, FILL + 9100 * MS, K.TARGET)
+    assert b.exit_outcome is X.MIXED_STOP_TARGET_EXIT  # not "STOP_FILLED" just because the stop came last
+    assert b.final_flattening_leg.value == "STOP"
+    legs = b.exit_record()["exit_fills"]
+    assert [(l["exit_type"], l["quantity"], l["price"], l["remaining_position_after"]) for l in legs] == [
+        ("TARGET", 1, "20026.00", 2), ("STOP", 2, "19999.50", 0)
+    ]
+    assert legs[0]["order_id"].endswith(":TARGET") and legs[1]["order_id"].endswith(":STOP")
+    assert (legs[0]["realized_gross_pnl_points"], legs[1]["realized_gross_pnl_points"]) == ("31/2", "-22")  # entry 20010.50
+    assert legs[1]["realized_gross_pnl_usd"] == "-44"
+    _, _, e = active()
+    e.on_component_failure(FILL + 500 * MS, K.TARGET, "STATE_UNKNOWN")
+    e.on_exit_fill(FILL + 700 * MS, E.FLATTEN, 1, D("20008.00"), AUTH)
+    e.on_position_report(FILL + 800 * MS, 0, None, "MNQM4", ACCOUNT)
+    e.on_cancel_confirmed(FILL + 900 * MS, K.STOP)
+    assert e.exit_outcome is X.PROTECTION_FAILURE_FLATTEN and e.final_flattening_leg.value == "EMERGENCY"
+
+
+def test_d031_02_a_late_fill_after_close_is_unknown_and_logged_separately():
+    _, _, b = active()
+    b.on_exit_fill(FILL + 5000 * MS, E.STOP, 1, D("19999.50"), AUTH)
+    close_flat(b, FILL + 5100 * MS, K.TARGET)
+    close_event = next(e for e in b.events if e[1] == "TRADE_CLOSED")
+    b.on_exit_fill(FILL + 6000 * MS, E.TARGET, 1, TARGET, AUTH)
+    assert b.exit_outcome is X.UNKNOWN_EXIT_STATE and close_event in b.events  # history unchanged
+    assert [a.code for a in b.anomalies] == ["LATE_SIBLING_FILL_AFTER_FLAT"]
+    assert {"RECONCILE_BROKER_POSITION", "DETECT_UNINTENDED_REVERSE_POSITION", "FLATTEN_ANY_UNINTENDED_EXPOSURE",
+            "CANCEL_REMAINING_ORDERS", "HALT_NEW_ENTRIES_FOR_TRADING_DATE"} <= set(b.required_actions)
+    assert b.unintended_exposure_quantity == 1 and b.halts_trading_date
+
+
+def test_d031_03_the_oco_link_clock_starts_at_the_right_moment():
+    _, order = filled()
+    atomic = bracket(order)
+    atomic.dispatch(FILL)
+    assert atomic.oco.pending_since_utc == FILL  # atomic: at dispatch
+    _, order = filled()
+    sep = bracket(order, M.SEPARATE_SERVER_SIDE_ORDERS)
+    sep.dispatch(FILL)
+    sep.on_order_confirmed(FILL + 500 * MS, K.STOP, report(K.STOP))
+    sep.on_order_confirmed(FILL + 1500 * MS, K.TARGET, report(K.TARGET))
+    assert sep.oco.pending_since_utc == FILL + 1500 * MS  # stop-first: once the target is confirmed
+    sep.advance(FILL + 3499 * MS)
+    assert not sep.emergency_flatten_required
+    sep.advance(FILL + 3500 * MS)
+    assert "OCO_LINK_FAILURE:ACKNOWLEDGEMENT_TIMEOUT" in sep.reasons
+
+
+def test_d031_04_unknown_cancellation_queries_first_and_never_duplicates_a_flatten_when_flat():
+    # Flat already: no extra flatten order; keep reconciling; a later target fill is flattened as unintended.
+    _, _, b = active()
+    b.begin_flatten(FILL + 60000 * MS, X.SESSION_EMERGENCY_FLATTEN)
+    b.on_exit_fill(FILL + 60100 * MS, E.FLATTEN, 1, D("20015.00"), AUTH)
+    b.on_position_report(FILL + 60200 * MS, 0, None, "MNQM4", ACCOUNT)
+    b.on_cancel_confirmed(FILL + 60300 * MS, K.STOP)
+    b.advance(FILL + 62000 * MS)  # the target cancel (requested at 60000) is still unconfirmed
+    assert b.cancellation_unknown and "PROTECTIVE_ORDER_CANCELLATION_UNKNOWN" in b.reasons
+    assert not b.emergency_flatten_required  # no duplicate emergency market order while confirmed flat
+    assert b.halts_trading_date and "QUERY_AUTHORITATIVE_POSITION_AND_ORDERS" in b.required_actions
+    assert b.target.live and b.state is not P.TRADE_CLOSED  # still possibly live: not closed yet
+    b.on_exit_fill(FILL + 63000 * MS, E.TARGET, 1, TARGET, AUTH)  # the target was live after all
+    assert b.exit_state_unknown and b.unintended_exposure_quantity == 1
+    # Position still open while the cancellation is unknown: continue/invoke emergency flattening, keep the stop.
+    _, _, o = active()
+    o.begin_flatten(FILL + 60000 * MS, X.SCHEDULED_NEWS_FLATTEN)
+    o.advance(FILL + 62000 * MS)
+    assert o.cancellation_unknown and not o.emergency_flatten_required
+    o.on_position_report(FILL + 62100 * MS, 1, Side.LONG, "MNQM4", ACCOUNT)
+    assert o.emergency_flatten_required and o.stop.status is CS.CONFIRMED
+
+
+def test_d031_05_a_position_mismatch_treats_the_broker_position_as_actual_exposure():
+    for quantity, side, contract, account in ((2, Side.LONG, "MNQM4", ACCOUNT), (1, Side.SHORT, "MNQM4", ACCOUNT),
+                                              (1, Side.LONG, "MNQU4", ACCOUNT), (1, Side.LONG, "MNQM4", "OTHER")):
+        book, _, b = active()
+        b.on_position_report(FILL + 1000 * MS, quantity, side, contract, account)
+        assert b.exit_state_unknown and {"POSITION_MISMATCH", "POSITION_RECONCILIATION_REQUIRED"} <= set(b.reasons)
+        assert b.broker_reported_exposure == (quantity, side.value, contract, account)
+        assert b.emergency_flatten_required and b.halts_trading_date
+        assert [a.code for a in b.anomalies] == ["POSITION_MISMATCH"]
+    _, _, b = active()
+    b.on_position_report(FILL + 1000 * MS, 2, Side.LONG, "MNQM4", ACCOUNT)
+    assert b.open_quantity == 2  # the broker's quantity is what must be flattened
+
+
+def test_d031_06_stop_and_target_stay_fixed_with_no_management_rules():
+    pm = SPEC["position_management"]
+    assert pm["breakeven_rule"] == pm["trailing_stop_rule"] == "NONE"
+    spec = copy.deepcopy(SPEC)
+    spec["position_management"]["trailing_stop_rule"] = "TRAIL_2_POINTS"
+    assert "position_management.trailing_stop_rule" in invalid_paths(spec)
+
+
+def test_d031_07_unresolved_intrabar_order_assumes_the_stop_first():
+    one_second = [PriceInterval(FILL, D("20027.00"), D("19999.00"), PriceSource.AUTHORITATIVE_TRADES, "1s@bar")]
+    d = resolve_minute(Side.LONG, STOP, TARGET, minute("20027.00", "19999.00"), PP, one_second)
+    assert d.source is E.STOP and "CONSERVATIVE_STOP_FIRST" in d.flags
+
+
+def test_d031_short_exit_pnl_is_signed_for_the_side():
+    from test_entry_order import booked  # noqa: F401  (fixtures only)
+    from test_confirmation import TRADE
+    from test_trade_geometry import GP, T, cand, geo, zone
+    from mnq_research.entry_order import EntryOrderBook
+    from mnq_research.trade_geometry import select_candidate
+    from test_trade_geometry import CLEAR
+
+    book = EntryOrderBook(TRADE, "MNQM4", EP)
+    sel = select_candidate(T, [geo(cand("SHORT", "19994", key="S"), zone("19970", "19975.75", "TS-"))], GP)
+    book.record_selection(sel)
+    order = book.create_order(sel.selected, T)
+    order.submit(SUB, CLEAR, ())
+    order.on_fill(FILL, 1, D("19993.50"), AUTH)
+    b = bracket(order)
+    b.dispatch(FILL)
+    b.on_exit_fill(FILL + 5000 * MS, E.TARGET, 1, D("19976.00"), AUTH)
+    (leg,) = b.exit_record()["exit_fills"]
+    assert leg["realized_gross_pnl_points"] == "35/2" and leg["realized_gross_pnl_usd"] == "35"  # short: entry - exit
