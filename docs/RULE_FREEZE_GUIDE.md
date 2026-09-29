@@ -334,6 +334,18 @@ transitively. Keep every constituent level."
 and risk are never made to look better than they are?
 **Illustrative only:** "A long measures to a resistance zone's lower edge."
 
+### `market_structure.definition`
+*(Added in Round 11.)*
+**Question:** What sequence defines the strategy's market structure? Is it
+an existing rule sequence, or a separate swing/trend filter?
+**Illustrative only:** `ACCEPTANCE_PULLBACK_HOLD_CONTINUATION`.
+
+### `market_structure.additional_swing_structure_filter`
+*(Added in Round 11.)*
+**Question:** Is any additional swing, pivot or trend filter active? If
+not, write `NOT_APPLICABLE`.
+**Illustrative only:** `NOT_APPLICABLE`.
+
 ### `market_structure.structure_bar_interval`
 *(Added in Round 2 for "developing market structure" in the summary.)*
 **Question:** Which bar length is market structure judged on?
@@ -573,6 +585,25 @@ rejection occurs upward."
 **Question:** Exactly when is a setup traded **short**?
 **Illustrative only:** "The setup is at a resistance-type level and a
 rejection occurs downward."
+
+### `direction.event_derived`
+*(Added in Round 11.)*
+**Question:** Is direction chosen in advance (a bias), or only derived from
+completed market events? Which inputs are forbidden from choosing it?
+**Illustrative only:** "Only from a confirmed continuation. No indicator or
+bias."
+
+### `direction.same_direction_candidates`
+*(Added in Round 11.)*
+**Question:** What happens when several same-direction confirmations
+complete at the same decision time?
+**Illustrative only:** "Keep them all, and resolve them in the entry round."
+
+### `direction.directional_state_reset`
+*(Added in Round 11.)*
+**Question:** When does a confirmation stop being usable for an entry?
+**Illustrative only:** "When it is used, invalidated, or its order validity
+expires."
 
 ### `direction.conflict_resolution`
 **Question:** What happens if long and short conditions are both true?

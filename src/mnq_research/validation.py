@@ -106,6 +106,9 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "direction.long_conditions",
     "direction.short_conditions",
     "direction.conflict_resolution",
+    "direction.event_derived",
+    "direction.same_direction_candidates",
+    "direction.directional_state_reset",
     # Structural levels
     "structural_levels.level_types",
     "structural_levels.calculation_method",
@@ -124,6 +127,8 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "level_states.directional_episodes",
     "level_states.event_priority",
     # Market structure
+    "market_structure.definition",
+    "market_structure.additional_swing_structure_filter",
     "market_structure.structure_bar_interval",
     "market_structure.swing_point_definition",
     "market_structure.bullish_progression_definition",
@@ -467,6 +472,8 @@ def check_rule_freeze(spec: Any, spec_path: str | Path | None = None) -> RuleFre
         add(problem)
     for problem in _confirmation_problems(spec):
         add(problem)
+    for problem in _direction_problems(spec):
+        add(problem)
 
     # 3. Any other unanswered value anywhere (e.g. nested TBDs, extra fields)
     for path, value in _iter_leaves(spec, ""):
@@ -617,6 +624,27 @@ def _confirmation_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
             problems.append(RuleFreezeProblem(f"{base}.{name}", "MISSING", "required parameter is missing"))
         elif not is_unresolved(value) and (isinstance(value, bool) or not isinstance(value, int) or value < 1):
             problems.append(RuleFreezeProblem(f"{base}.{name}", "INVALID", f"must be a whole number >= 1, got {value!r}"))
+    return problems
+
+
+B0_MARKET_STRUCTURE = "ACCEPTANCE_PULLBACK_HOLD_CONTINUATION"
+B0_CONFLICT_RESULT = "NO_TRADE_DIRECTIONAL_CONFLICT"
+
+
+def _direction_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
+    problems: list[RuleFreezeProblem] = []
+    expectations = (
+        ("market_structure.definition", B0_MARKET_STRUCTURE),
+        ("market_structure.additional_swing_structure_filter", "NOT_APPLICABLE"),
+        ("direction.conflict_resolution.result", B0_CONFLICT_RESULT),
+        ("direction.conflict_resolution.halt_new_entries_for_remainder_of_trading_date", True),
+    )
+    for path, expected in expectations:
+        value = get_path(spec, path)
+        if value is _MISSING or is_unresolved(value):
+            continue  # reported as missing/unresolved elsewhere
+        if value != expected:
+            problems.append(RuleFreezeProblem(path, "INVALID", f"B0 implements only {expected!r}, got {value!r}"))
     return problems
 
 

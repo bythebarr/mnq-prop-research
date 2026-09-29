@@ -6,7 +6,8 @@ The code is `src/mnq_research/confirmation.py`, and the tests are
 
 > Status: part of a **DRAFT** specification. A confirmation is **only a
 > recorded event**. It does not place an order, and it has no entry price,
-> size, stop or target. Those are later rounds. Open items: D-026.
+> size, stop or target. Those are later rounds. D-026 is confirmed.
+> Direction rules are in `DIRECTION.md`.
 
 ## The single B0 pattern: PULLBACK_HOLD_CONTINUATION
 
@@ -19,14 +20,15 @@ the day's proximity tolerance (at least 2 points).
 
 ### Long (after ACCEPTED_ABOVE)
 
-| Step | Bar | Condition (all inclusive) |
+| Step | Bar | Condition |
 |---|---|---|
 | 0 | Acceptance bar | Round 9 acceptance. Can **never** double as the hold bar |
-| 1 | Retest-hold (the first such bar) | low ≤ U + retest distance, low ≥ L − 0.25, and close ≥ U + 0.50 |
+| 1 | Retest-hold (the first such bar) | low ≤ U + retest distance, low **> L − 0.25** (so the lowest allowed low is L itself), and close ≥ U + 0.50 |
 | 2 | The **very next** bar | close ≥ retest-hold high + 0.25 → `CONFIRMED_LONG_CONTINUATION` |
 
 The short side is the mirror image. The retest-hold has high ≥ L − retest
-distance, high ≤ U + 0.25 and close ≤ L − 0.50. The continuation needs a
+distance, high **< U + 0.25** (so the highest allowed high is U) and close ≤
+L − 0.50. The continuation needs a
 close ≤ hold low − 0.25.
 
 A **wick** beyond the hold bar's extreme is never enough; it must be a
@@ -66,11 +68,20 @@ needs the **whole process again**: a fresh arm, a new attempt (new
 six-bar clock. Every confirmation event carries exactly one
 `acceptance_id`, `attempt_id` and zone version, and they can never be mixed.
 
-## Open items (D-026)
+## Confirmed details (D-026)
 
-1. **Equality conflict:** a low of exactly L − 0.25 (long) meets both "hold:
-   low ≥ L − 0.25" and "failure: trades at or below L − 0.25". It is
-   implemented as a **failure**.
-2. **Acceptances during the 09:30–09:45 replay** aren't followed by
-   confirmation. Confirmation tracking only starts for acceptances observed
-   from 09:45 on.
+1. **No overlap at the far boundary.** One tick through the far side (a
+   print at L − 0.25 for longs, or U + 0.25 for shorts) always **fails**.
+   Equality belongs to the failure rule, never the hold rule.
+2. **Replay acceptances** (prior-day and overnight zones, 09:30–09:45) do
+   start confirmation, from their real timestamp. The six-bar clock is never
+   reset at 09:45. A confirmation completed before 09:45 is historical and
+   non-executable, and it is not carried forward. A confirmation completing
+   at 09:45 or later may become a candidate.
+3. **The cutoff** is checked at the decision bar's close. A continuation
+   closing at 11:30 is invalidated; one closing at 11:25 may proceed to the
+   entry round.
+
+**Note on timing.** A zone is initialised at 09:30 with no arm. It needs an
+arming bar, then an interaction bar, then a second acceptance close, so the
+earliest possible replay acceptance closes at **09:45** (D-027).

@@ -468,18 +468,48 @@ def test_all_candidate_distances_come_from_the_specification():
 # =========================================================================== D-025 clarifications
 
 
-def test_an_approach_only_episode_is_withdrawn_not_rejected():
+def test_an_approach_receives_no_attempt_id_and_withdraws_without_an_attempt():
     z = zone()
     run(z, far_below(0))
-    run(z, bar(1, 19995.0, 19991.0, 19994.0))  # approach starts the episode (close not clear-side)
-    assert z.active_attempt.phase == "APPROACH_ONLY" and not z.active_rejection_window
-    events = run(z, bar(2, 19996.0, 19990.0, 19992.0))  # back at the origin-side threshold, never touched
-    assert E.REJECTED_UPWARD_ATTEMPT not in events
-    assert z.attempts[0].status is AttemptStatus.APPROACH_WITHDRAWN
-    assert E.ARMED_FROM_BELOW in events and E.ATTEMPT_STARTED not in events  # rearmed; a LATER bar must start
+    events = run(z, bar(1, 19995.0, 19991.0, 19994.0))  # approach from below: an observation only
+    assert E.APPROACH_SEQUENCE_STARTED in events and E.ATTEMPT_STARTED not in events
+    assert z.active_attempt is None and z.attempt_count == 0 and not z.active_rejection_window
+    assert z.active_approach.approach_sequence_id == 1
+    events = run(z, bar(2, 19996.0, 19990.0, 19992.0))  # close <= L - 0.50 before any interaction
+    assert E.APPROACH_WITHDRAWN in events and E.REJECTED_UPWARD_ATTEMPT not in events
+    assert z.approaches[0].approach_status.value == "APPROACH_WITHDRAWN"
+    assert z.armed_side is Origin.BELOW  # armed state kept
     assert E.APPROACHED_FROM_BELOW in [e.event for e in z.history]  # approach history kept
-    assert E.ATTEMPT_STARTED in run(z, inside(3))
-    assert z.attempt_id == 2
+
+
+def test_repeated_withdrawn_approaches_do_not_inflate_attempt_count():
+    z = zone()
+    run(z, far_below(0))
+    for i in range(1, 9):
+        run(z, bar(i, 19995.0, 19991.0, 19993.0))  # hovering just below: approach / withdraw cycles
+    assert z.attempt_count == 0 and z.approach_count >= 2
+    assert not z.events(E.ATTEMPT_STARTED)
+
+
+def test_approach_and_attempt_counts_are_separate_and_conversion_creates_the_attempt():
+    z = zone()
+    run(z, far_below(0), bar(1, 19995.0, 19991.0, 19994.0))  # approach 1
+    events = run(z, inside(2))  # touch converts it
+    assert E.APPROACH_CONVERTED_TO_ATTEMPT in events and E.ATTEMPT_STARTED in events
+    assert z.approach_count == 1 and z.attempt_count == 1
+    assert z.attempts[0].approach_sequence_id == 1
+    assert z.approaches[0].approach_status.value == "APPROACH_CONVERTED_TO_ATTEMPT"
+
+
+def test_the_rejection_clock_begins_only_at_actual_interaction():
+    z = zone()
+    run(z, far_below(0))
+    run(z, bar(1, 19995.0, 19991.0, 19994.0), bar(2, 19996.0, 19991.0, 19994.0))  # approach bars
+    assert not z.active_rejection_window
+    run(z, inside(3))  # interaction: window bar 1
+    run(z, inside(4), inside(5))  # bars 2 and 3
+    assert z.events(E.REJECTION_WINDOW_EXPIRED)[0].timestamp_utc == START + 6 * FIVE
+    assert z.events(E.REJECTION_WINDOW_OPENED)[0].timestamp_utc == START + 4 * FIVE
 
 
 def test_every_acceptance_gets_a_unique_acceptance_id():
@@ -510,3 +540,4 @@ def test_gap_threshold_is_enforced_in_a_non_b0_parameter_fixture():
     assert z.active_attempt is None
     events = run(z, bar(2, 20015.0, 20010.0, 20012.0))  # low above U
     assert E.GAPPED_ABOVE_ZONE not in events and E.ATTEMPT_STARTED not in events
+    # A jump over the zone that is not a qualifying gap starts no attempt (D-027).

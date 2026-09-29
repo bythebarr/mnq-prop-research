@@ -30,7 +30,18 @@ from typing import Any, Iterable, Mapping
 
 import pandas as pd
 
-from mnq_research.level_states import AttemptStatus, DecisionBar, ZoneEvent, ZoneEventType, ZoneTracker
+from mnq_research.level_states import (
+    AttemptStatus,
+    DecisionBar,
+    StateParams,
+    ZoneEvent,
+    ZoneEventType,
+    ZoneTracker,
+    build_pre_open_zones,
+    replay_bars,
+    version_zones_at_0945,
+)
+from mnq_research.structural_levels import DailyLevelSet, OPENING_RANGE_END_NY
 from mnq_research.structural_levels import NEW_ENTRY_CUTOFF_NY, NEW_YORK, TICK, ny_time
 
 CONFIRMATION_TYPE = "PULLBACK_HOLD_CONTINUATION"
@@ -235,10 +246,18 @@ class ConfirmationSequence:
                 reasons.append("OPPOSITE_ACCEPTANCE")
             if reasons:
                 return self._finish(bar.end_utc, ConfirmationOutcome.FAILED, ConfirmationEventType.CONFIRMATION_FAILED_BEFORE_HOLD, index, ";".join(reasons))
+            # D-026: hold and failure inequalities are mutually exclusive
+            # (long hold needs low > L - 1 tick; failure is low <= L - 1 tick).
             if long:
-                is_hold = low <= hi + self.retest_distance and close >= hi + p.hold_close_points
+                is_hold = (
+                    hi + self.retest_distance >= low > lo - p.opposite_failure_points
+                    and close >= hi + p.hold_close_points
+                )
             else:
-                is_hold = high >= lo - self.retest_distance and close <= lo - p.hold_close_points
+                is_hold = (
+                    lo - self.retest_distance <= high < hi + p.opposite_failure_points
+                    and close <= lo - p.hold_close_points
+                )
             if is_hold and index < p.max_bars_after_acceptance:
                 self.hold = RetestHold(bar.end_utc, index, high, low, close)
                 event = self._event(bar.end_utc, ConfirmationEventType.LONG_RETEST_HOLD if long else ConfirmationEventType.SHORT_RETEST_HOLD, index)
@@ -272,8 +291,8 @@ class SetupEngine:
     def active(self) -> ConfirmationSequence | None:
         return next((s for s in self.sequences if s.is_pending), None)
 
-    def process(self, bar: DecisionBar) -> tuple[ConfirmationEvent, ...]:
-        zone_events = self.zone.process(bar)
+    def process(self, bar: DecisionBar, initialization_replay: bool = False) -> tuple[ConfirmationEvent, ...]:
+        zone_events = self.zone.process(bar, initialization_replay)
         out: list[ConfirmationEvent] = []
         if self.active is not None:
             out += self.active.process(bar, zone_events)
@@ -290,3 +309,43 @@ class SetupEngine:
     def end_trading_window(self, when_utc: pd.Timestamp) -> tuple[ConfirmationEvent, ...]:
         self.zone.end_trading_window(when_utc)
         return self.active.end_trading_window(when_utc) if self.active else ()
+
+
+@dataclass
+class EngineBook:
+    active: dict[str, SetupEngine]
+    archived: dict[str, SetupEngine]
+    unavailable_reason: str | None = None
+
+
+def initialize_engines(
+    daily: DailyLevelSet,
+    pre_open_bars: Iterable[DecisionBar],
+    state_params: "StateParams",
+    params: ConfirmationParams,
+) -> EngineBook:
+    """Zones plus confirmation engines for one trading date (D-026 decision 3).
+
+    Prior-RTH/overnight zones run the 09:30-09:45 replay THROUGH their engines,
+    so an acceptance formed during the replay starts a confirmation sequence at
+    its real timestamp (its six-bar clock is never reset or extended at 09:45).
+    A zone superseded at 09:45 invalidates its pending confirmation
+    (INVALIDATED_BY_ZONE_CHANGE). Opening-range zones start fresh at 09:45.
+    Whether a confirmation is executable (not before 09:45) is decided by the
+    direction layer, not here.
+    """
+    pre = build_pre_open_zones(daily, state_params)
+    if pre is None:
+        return EngineBook({}, {}, "PROXIMITY_TOLERANCE_UNAVAILABLE")
+    engines = {zone_id: SetupEngine(tracker, params) for zone_id, tracker in pre.trackers.items()}
+    for bar in replay_bars(daily, pre_open_bars):
+        for engine in engines.values():
+            engine.process(bar, initialization_replay=True)
+    book = version_zones_at_0945(daily, pre, state_params)
+    t_or = ny_time(daily.trade_date, OPENING_RANGE_END_NY)
+    archived = {}
+    for zone_id in book.archived:
+        engines[zone_id].zone_changed(t_or)
+        archived[zone_id] = engines[zone_id]
+    active = {zone_id: engines.get(zone_id) or SetupEngine(tracker, params) for zone_id, tracker in book.active.items()}
+    return EngineBook(active, archived)

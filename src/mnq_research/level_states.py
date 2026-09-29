@@ -72,6 +72,10 @@ class ZoneEventType(str, Enum):
     ZONE_SUPERSEDED = "ZONE_SUPERSEDED"
     ARMED_FROM_BELOW = "ARMED_FROM_BELOW"
     ARMED_FROM_ABOVE = "ARMED_FROM_ABOVE"
+    APPROACH_SEQUENCE_STARTED = "APPROACH_SEQUENCE_STARTED"
+    APPROACH_WITHDRAWN = "APPROACH_WITHDRAWN"
+    APPROACH_CONVERTED_TO_ATTEMPT = "APPROACH_CONVERTED_TO_ATTEMPT"
+    APPROACH_INVALIDATED = "APPROACH_INVALIDATED"
     ATTEMPT_STARTED = "ATTEMPT_STARTED"
     ATTEMPT_ENDED = "ATTEMPT_ENDED"
     APPROACHED_FROM_BELOW = "APPROACHED_FROM_BELOW"
@@ -117,15 +121,20 @@ class AttemptStatus(str, Enum):
     ACCEPTED = "ACCEPTED"
     REJECTED = "REJECTED"
     ENDED_REARMED_ON_ORIGIN_SIDE = "ENDED_REARMED_ON_ORIGIN_SIDE"
-    APPROACH_WITHDRAWN = "APPROACH_WITHDRAWN"
     ENDED_INTERRUPTION = "ENDED_INTERRUPTION"
     ENDED_BLACKOUT = "ENDED_BLACKOUT"
     ENDED_TRADING_WINDOW = "ENDED_TRADING_WINDOW"
     ENDED_ZONE_EXPIRED = "ENDED_ZONE_EXPIRED"
 
 
+class ApproachStatus(str, Enum):
+    ACTIVE_APPROACH = "ACTIVE_APPROACH"
+    APPROACH_WITHDRAWN = "APPROACH_WITHDRAWN"
+    APPROACH_CONVERTED_TO_ATTEMPT = "APPROACH_CONVERTED_TO_ATTEMPT"
+    APPROACH_INVALIDATED = "APPROACH_INVALIDATED"
+
+
 class WindowStatus(str, Enum):
-    NOT_OPENED = "NOT_OPENED"  # episode began by approach; no touch/breach/gap yet
     OPEN = "OPEN"
     EXPIRED = "EXPIRED"
     CLOSED = "CLOSED"
@@ -226,16 +235,23 @@ class Attempt:
     armed_timestamp_utc: pd.Timestamp
     armed_close: Decimal
     status: AttemptStatus = AttemptStatus.ACTIVE
-    window_status: WindowStatus = WindowStatus.NOT_OPENED
+    window_status: WindowStatus = WindowStatus.OPEN  # the rejection clock starts at interaction
     window_bars_elapsed: int = 0
     acceptance_count: int = 0
     end_timestamp_utc: pd.Timestamp | None = None
     acceptance_id: str | None = None
+    approach_sequence_id: int | None = None  # the approach it converted from, if any
 
-    @property
-    def phase(self) -> str:
-        """APPROACH_ONLY until the first touch, directional breach or qualifying gap."""
-        return "APPROACH_ONLY" if self.window_status is WindowStatus.NOT_OPENED else "INTERACTING"
+
+@dataclass
+class ApproachSequence:
+    """Approach observation before any interaction (D-026): never an attempt."""
+
+    approach_sequence_id: int
+    approach_direction: Direction
+    approach_start_timestamp: pd.Timestamp
+    approach_most_recent_timestamp: pd.Timestamp
+    approach_status: ApproachStatus = ApproachStatus.ACTIVE_APPROACH
 
 
 def _d(value: float) -> Decimal:
@@ -263,6 +279,7 @@ class ZoneTracker:
         self.parent_constituent_types = cluster.constituent_level_types
         self.superseded_by: str | None = None
         self.attempts: list[Attempt] = []
+        self.approaches: list[ApproachSequence] = []
         # Acceptances that already have a confirmation sequence (each may be used once).
         self.claimed_acceptance_ids: set[str] = set()
         self._history: list[ZoneEvent] = [ZoneEvent(initialized_at_utc, ZoneEventType.ZONE_INITIALIZED)]
@@ -325,6 +342,18 @@ class ZoneTracker:
     def consecutive_acceptance_closes_below(self) -> int:
         return self._attempt.acceptance_count if self.active_attempt_direction is Direction.DOWNWARD else 0
 
+    @property
+    def active_approach(self) -> ApproachSequence | None:
+        return self._approach
+
+    @property
+    def attempt_count(self) -> int:
+        return len(self.attempts)
+
+    @property
+    def approach_count(self) -> int:
+        return len(self.approaches)
+
     def events(self, event: ZoneEventType) -> list[ZoneEvent]:
         return [e for e in self._history if e.event is event]
 
@@ -336,6 +365,7 @@ class ZoneTracker:
         self.armed_timestamp: pd.Timestamp | None = None
         self.armed_close: Decimal | None = None
         self._attempt: Attempt | None = None
+        self._approach: ApproachSequence | None = None
         self._last_close: Decimal | None = None
 
     def _end_attempt(self, when: pd.Timestamp, status: AttemptStatus, replay: bool) -> list[ZoneEvent]:
@@ -351,9 +381,22 @@ class ZoneTracker:
         self._attempt = None
         return events
 
+    def _end_approach(self, when: pd.Timestamp, status: ApproachStatus, replay: bool, detail: str = "") -> list[ZoneEvent]:
+        approach = self._approach
+        if approach is None:
+            return []
+        approach.approach_status = status
+        self._approach = None
+        event_type = {
+            ApproachStatus.APPROACH_WITHDRAWN: ZoneEventType.APPROACH_WITHDRAWN,
+            ApproachStatus.APPROACH_CONVERTED_TO_ATTEMPT: ZoneEventType.APPROACH_CONVERTED_TO_ATTEMPT,
+        }.get(status, ZoneEventType.APPROACH_INVALIDATED)
+        return [ZoneEvent(when, event_type, replay, detail or str(approach.approach_sequence_id))]
+
     def _reset_all(self, when: pd.Timestamp, status: AttemptStatus, replay: bool) -> list[ZoneEvent]:
-        """Remove all executable state (arming, episode, counters); keep history."""
-        events = self._end_attempt(when, status, replay)
+        """Remove all executable state (arming, approach, episode, counters); keep history."""
+        events = self._end_approach(when, ApproachStatus.APPROACH_INVALIDATED, replay, status.value)
+        events += self._end_attempt(when, status, replay)
         self._clear_executable_state()
         return events
 
@@ -369,10 +412,12 @@ class ZoneTracker:
         return self._record(events)
 
     def end_trading_window(self, when_utc: pd.Timestamp) -> tuple[ZoneEvent, ...]:
-        return self._record(self._end_attempt(when_utc, AttemptStatus.ENDED_TRADING_WINDOW, False))
+        events = self._end_approach(when_utc, ApproachStatus.APPROACH_INVALIDATED, False, "TRADING_WINDOW_CLOSED")
+        return self._record(events + self._end_attempt(when_utc, AttemptStatus.ENDED_TRADING_WINDOW, False))
 
     def expire(self, when_utc: pd.Timestamp) -> tuple[ZoneEvent, ...]:
-        return self._record(self._end_attempt(when_utc, AttemptStatus.ENDED_ZONE_EXPIRED, False))
+        events = self._end_approach(when_utc, ApproachStatus.APPROACH_INVALIDATED, False, "ZONE_EXPIRED")
+        return self._record(events + self._end_attempt(when_utc, AttemptStatus.ENDED_ZONE_EXPIRED, False))
 
     def supersede(self, when_utc: pd.Timestamp, successor_id: str) -> None:
         self.superseded_by = successor_id
@@ -435,17 +480,25 @@ class ZoneTracker:
         if approach_above:
             flag(ZoneEventType.APPROACHED_FROM_ABOVE)
 
-        # --- Episode start: needs arming from an EARLIER bar ------------------
-        # Arming only exists while no episode is active (see the arming step
-        # below), so a new episode can only start when none is running.
+        # --- Attempt start (D-026): only on actual interaction -----------------
+        # Needs arming from an EARLIER bar and a touch, a breach in the armed
+        # direction, or a qualifying gap. An approach alone never starts one.
+        # A directional breach always includes a touch unless the bar jumped the
+        # whole zone, and a jump starts an attempt only if it is a QUALIFYING
+        # gap (clear-side origin); otherwise the gap threshold would be bypassed
+        # (D-027 interpretation, pending owner confirmation).
         closing: list[ZoneEvent] = []
         start: Direction | None = None
-        if self._attempt is None and self.armed_side is Origin.BELOW and (approach_below or touched or gap_above):
+        if self._attempt is None and self.armed_side is Origin.BELOW and (touched or gap_above):
             start = Direction.UPWARD
-        elif self._attempt is None and self.armed_side is Origin.ABOVE and (approach_above or touched or gap_below):
+        elif self._attempt is None and self.armed_side is Origin.ABOVE and (touched or gap_below):
             start = Direction.DOWNWARD
         if start is not None:
             new_id = len(self.attempts) + 1
+            approach = self._approach
+            approach_id = approach.approach_sequence_id if approach and approach.approach_direction is start else None
+            for event in self._end_approach(t, ApproachStatus.APPROACH_CONVERTED_TO_ATTEMPT if approach_id else ApproachStatus.APPROACH_INVALIDATED, replay):
+                flag(event.event, event.detail, new_id if approach_id else None)
             self._attempt = Attempt(
                 new_id,
                 start,
@@ -453,12 +506,34 @@ class ZoneTracker:
                 t,
                 self.armed_timestamp,
                 self.armed_close,
+                approach_sequence_id=approach_id,
             )
             self.attempts.append(self._attempt)
             self.armed_side = self.armed_timestamp = self.armed_close = None  # consumed
             if self.first_interaction_timestamp is None:
                 self.first_interaction_timestamp = t
             flag(ZoneEventType.ATTEMPT_STARTED, start.value, new_id)
+            flag(ZoneEventType.REJECTION_WINDOW_OPENED, start.value, new_id)
+        elif self._attempt is None:
+            # --- Approach observation (no attempt, no attempt_id, no clock) ----
+            direction = (
+                Direction.UPWARD if self.armed_side is Origin.BELOW and approach_below
+                else Direction.DOWNWARD if self.armed_side is Origin.ABOVE and approach_above
+                else None
+            )
+            if direction is not None:
+                if self._approach is None:
+                    self._approach = ApproachSequence(len(self.approaches) + 1, direction, t, t)
+                    self.approaches.append(self._approach)
+                    flag(ZoneEventType.APPROACH_SEQUENCE_STARTED, direction.value)
+                else:
+                    self._approach.approach_most_recent_timestamp = t
+            approach = self._approach
+            if approach is not None and approach.approach_start_timestamp != t:
+                withdrawn = close <= lo - clear if approach.approach_direction is Direction.UPWARD else close >= hi + clear
+                if withdrawn:
+                    for event in self._end_approach(t, ApproachStatus.APPROACH_WITHDRAWN, replay):
+                        flag(event.event, event.detail)
 
         attempt = self._attempt
         aid = attempt.attempt_id if attempt else None
@@ -476,22 +551,15 @@ class ZoneTracker:
                 flag(ZoneEventType.BREACHED_ABOVE, "", aid)
             if gap_above:
                 flag(ZoneEventType.GAPPED_ABOVE_ZONE, "ORIGIN_BELOW", aid)
-            interacted = touched or raw_breach_above or gap_above
         elif attempt is not None:
             if raw_breach_below:
                 flag(ZoneEventType.BREACHED_BELOW, "", aid)
             if gap_below:
                 flag(ZoneEventType.GAPPED_BELOW_ZONE, "ORIGIN_ABOVE", aid)
-            interacted = touched or raw_breach_below or gap_below
-        else:
-            interacted = False
 
         # --- Episode evaluation: window, rejection, acceptance ----------------
         if attempt is not None:
             upward = attempt.direction is Direction.UPWARD
-            if attempt.window_status is WindowStatus.NOT_OPENED and interacted:
-                attempt.window_status = WindowStatus.OPEN
-                flag(ZoneEventType.REJECTION_WINDOW_OPENED, attempt.direction.value, aid)
             if attempt.window_status is WindowStatus.OPEN:
                 attempt.window_bars_elapsed += 1
             beyond = close >= hi + p.acceptance_points if upward else close <= lo - p.acceptance_points
@@ -507,15 +575,6 @@ class ZoneTracker:
                 closing += self._end_attempt(t, AttemptStatus.ACCEPTED, replay)
             elif attempt.window_status is WindowStatus.EXPIRED and back_on_origin_side:
                 closing += self._end_attempt(t, AttemptStatus.ENDED_REARMED_ON_ORIGIN_SIDE, replay)
-            elif (
-                attempt.window_status is WindowStatus.NOT_OPENED
-                and back_on_origin_side
-                and attempt.start_timestamp_utc != t
-            ):
-                # Approach-only episode: price returned to the origin-side arming
-                # threshold before any touch/breach/gap. Not a rejection; the
-                # arming step below restores the armed state for a LATER bar.
-                closing += self._end_attempt(t, AttemptStatus.APPROACH_WITHDRAWN, replay)
             elif attempt.window_status is WindowStatus.OPEN and attempt.window_bars_elapsed >= p.rejection_window_complete_bars:
                 attempt.window_status = WindowStatus.EXPIRED
                 closing.append(ZoneEvent(t, ZoneEventType.REJECTION_WINDOW_EXPIRED, replay, "NO_QUALIFYING_CLOSE", aid))
@@ -558,42 +617,64 @@ class ZoneBook:
     unavailable_reason: str | None = None
 
 
-def initialize_zones(daily: DailyLevelSet, pre_open_bars: Iterable[DecisionBar], params: StateParams) -> ZoneBook:
-    """Build the day's zones.
+@dataclass
+class PreOpenZones:
+    clusters: tuple[LevelCluster, ...]
+    trackers: dict[str, ZoneTracker]
 
-    1. Zones of prior-RTH/overnight levels exist at 09:30 and replay the three
-       09:30-09:45 decision bars (initialisation only; never an entry). The
-       replay may arm, start episodes, accept or reject under the full rules.
-    2. At 09:45 the full level set (including the opening range) is clustered
-       again. Zones containing an opening-range level start fresh: no arming,
-       no episode, UNTOUCHED. Any pre-open zone they absorb is archived, not
-       transferred.
-    """
+
+def build_pre_open_zones(daily: DailyLevelSet, params: StateParams) -> PreOpenZones | None:
+    """Zones of prior-RTH/overnight levels, existing from 09:30 (None if no tolerance)."""
     tolerance = daily.proximity_tolerance_points
     if tolerance is None:
-        return ZoneBook({}, {}, "PROXIMITY_TOLERANCE_UNAVAILABLE")
+        return None
     t_open = ny_time(daily.trade_date, RTH_OPEN_NY)
-    t_or = ny_time(daily.trade_date, OPENING_RANGE_END_NY)
-
     pre_levels = [lv for lv in daily.available_levels(t_open) if lv.level_type not in OPENING_RANGE_TYPES]
-    pre_clusters = cluster_levels(pre_levels, tolerance, t_open, label="PRE0930-")
-    pre = {c.cluster_id: ZoneTracker(c, params, tolerance, t_open) for c in pre_clusters}
-    for bar in sorted(pre_open_bars, key=lambda b: b.start_utc):
-        if bar.end_utc <= t_or:
-            for tracker in pre.values():
-                tracker.process(bar, initialization_replay=True)
+    clusters = cluster_levels(pre_levels, tolerance, t_open, label="PRE0930-")
+    return PreOpenZones(clusters, {c.cluster_id: ZoneTracker(c, params, tolerance, t_open) for c in clusters})
 
+
+def replay_bars(daily: DailyLevelSet, bars: Iterable[DecisionBar]) -> list[DecisionBar]:
+    """The 09:30-09:45 initialisation-replay bars, in time order."""
+    t_or = ny_time(daily.trade_date, OPENING_RANGE_END_NY)
+    return [b for b in sorted(bars, key=lambda b: b.start_utc) if b.end_utc <= t_or]
+
+
+def version_zones_at_0945(daily: DailyLevelSet, pre: PreOpenZones, params: StateParams) -> ZoneBook:
+    """Re-cluster at 09:45. Zones containing an opening-range level start fresh
+    (no arming, no episode, UNTOUCHED); any pre-open zone they absorb is
+    superseded and archived, never transferred."""
+    tolerance = daily.proximity_tolerance_points
+    t_or = ny_time(daily.trade_date, OPENING_RANGE_END_NY)
     active: dict[str, ZoneTracker] = {}
     archived: dict[str, ZoneTracker] = {}
     for cluster in cluster_levels(daily.available_levels(t_or), tolerance, t_or, label="0945-"):
         types = set(cluster.constituent_level_types)
         if types & OPENING_RANGE_TYPES:
-            predecessors = tuple(c.cluster_id for c in pre_clusters if types & set(c.constituent_level_types))
+            predecessors = tuple(c.cluster_id for c in pre.clusters if types & set(c.constituent_level_types))
             active[cluster.cluster_id] = ZoneTracker(cluster, params, tolerance, t_or, predecessors)
             for pid in predecessors:
-                pre[pid].supersede(t_or, cluster.cluster_id)
-                archived[pid] = pre[pid]
+                pre.trackers[pid].supersede(t_or, cluster.cluster_id)
+                archived[pid] = pre.trackers[pid]
         else:
-            match = next(c for c in pre_clusters if set(c.constituent_level_types) == types)
-            active[match.cluster_id] = pre[match.cluster_id]
+            match = next(c for c in pre.clusters if set(c.constituent_level_types) == types)
+            active[match.cluster_id] = pre.trackers[match.cluster_id]
     return ZoneBook(active, archived)
+
+
+def initialize_zones(daily: DailyLevelSet, pre_open_bars: Iterable[DecisionBar], params: StateParams) -> ZoneBook:
+    """Build the day's zones.
+
+    1. Zones of prior-RTH/overnight levels exist at 09:30 and replay the three
+       09:30-09:45 decision bars (initialisation only; never an entry). The
+       replay may arm, start attempts, accept or reject under the full rules.
+    2. At 09:45 the full level set (including the opening range) is clustered
+       again (``version_zones_at_0945``).
+    """
+    pre = build_pre_open_zones(daily, params)
+    if pre is None:
+        return ZoneBook({}, {}, "PROXIMITY_TOLERANCE_UNAVAILABLE")
+    for bar in replay_bars(daily, pre_open_bars):
+        for tracker in pre.trackers.values():
+            tracker.process(bar, initialization_replay=True)
+    return version_zones_at_0945(daily, pre, params)

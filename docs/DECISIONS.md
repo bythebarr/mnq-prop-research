@@ -431,5 +431,62 @@ cutoff, missing bars ignored, and acceptance reuse.
 4. **Cutoff test:** the cutoff is applied to the decision bar's close. A
    continuation bar closing at or after 11:30 is `INVALIDATED_BY_CUTOFF`.
 **Reversible:** yes.
-**Status:** Pattern and parameters CONFIRMED by the owner (Round 10).
+**Status:** CONFIRMED by the project owner on 2026-09-29, with amendments
+(see D-027):
+1. Failure wins, and the inequalities are now exclusive.
+2. Approaches became separate observations.
+3. Replay acceptances may be confirmed; pre-09:45 confirmations are
+   non-executable.
+4. The cutoff at the bar's close is confirmed.
+
+## D-027 — Direction, approach observations and replay confirmation (Round 11)
+**Decision:** D-026 was confirmed with the owner's amendments and
+implemented:
+- Hold and failure inequalities are now mutually exclusive.
+- Approaches are separate observations, with their own IDs, statuses and
+  counts. Attempts start only at interaction, and the rejection clock starts
+  then.
+- Acceptances during the replay start confirmation from their real
+  timestamp, via `initialize_engines`. Zone supersession at 09:45
+  invalidates their confirmation.
+- The cutoff is applied at the bar's close.
+
+Round 11 adds `direction.py`:
+- Direction candidates come only from fully linked confirmed continuations.
+- There is no bias and no swing filter (`market_structure.definition =
+  ACCEPTANCE_PULLBACK_HOLD_CONTINUATION`).
+- Same-time opposite confirmations give `NO_TRADE_DIRECTIONAL_CONFLICT`
+  plus a daily halt, independent of processing order.
+- Multiple same-direction candidates are flagged `requires_selection`.
+- Pre-09:45 confirmations are non-executable.
+
+The validator enforces the B0 values for the structure definition, the swing
+filter, the conflict result and the halt. Five new required fields were
+added.
+
+**Testing:** 16 direction tests, plus new level-state and confirmation
+tests. Mutation checks caught a missing conflict check, a missing halt,
+pre-window executability, 09:45 exclusion, an unchecked contract link, and
+approaches starting attempts. One mutation is **equivalent**: reintroducing
+the hold/failure overlap changes nothing, because the failure check runs
+before the hold check. The exclusive hold inequality is a second guard for
+that case. A report-ordering bug with identical zone IDs was found by the
+tests and fixed.
+
+**Pending owner confirmation:**
+1. **Jumps:** a bar that jumps a whole armed zone without a qualifying gap
+   starts no attempt. "Directionally valid breach" is treated as always
+   accompanied by a touch; otherwise any jump would bypass the gap-origin
+   threshold.
+2. **Replay timing:** zones start unarmed at 09:30, so the earliest possible
+   replay acceptance closes at 09:45. The owner's examples with acceptance at
+   09:35 or 09:40 cannot occur under the frozen initialisation rules. The
+   executability rules were tested at component level with synthetic clock
+   times.
+3. **Pre-window conflicts:** a same-time long/short conflict completing
+   before 09:45 also halts the day (conservative).
+4. **Withdrawal timing:** an approach can't be withdrawn on the same bar it
+   started (carried over from D-026 item 2).
+**Reversible:** yes.
+**Status:** Rules CONFIRMED by the owner (Round 11 and D-026 amendments).
 Items 1–4 PENDING.

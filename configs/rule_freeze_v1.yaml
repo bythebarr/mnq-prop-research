@@ -524,9 +524,47 @@ setup:
 
 # --- Direction rules ----------------------------------------------------------------------------------
 direction:
-  long_conditions: TBD
-  short_conditions: TBD
-  conflict_resolution: TBD
+  # Round 11 (rule owner, 2026-09-29). Implemented in src/mnq_research/direction.py.
+  event_derived: >
+    Direction is never selected before the market completes the structural
+    sequence. No morning bias; upward and downward processes may be monitored
+    independently, but an executable direction exists only after
+    confirmation. No EMA, VWAP, overnight, gap or prior-day-close bias is used.
+  long_conditions: >
+    A LONG candidate exists only when the trading date, contract,
+    zone_version_id, attempt_id, acceptance_id and confirmation sequence all
+    match and the final event is CONFIRMED_LONG_CONTINUATION. Nothing else
+    (price location, candle colour, indicator or discretionary opinion) can
+    create one.
+  short_conditions: >
+    A SHORT candidate exists only when all the corresponding identifiers match
+    and the final event is CONFIRMED_SHORT_CONTINUATION. Nothing else can
+    create one.
+  conflict_resolution:
+    trigger: one or more long and one or more short confirmations complete at the same decision timestamp
+    result: NO_TRADE_DIRECTIONAL_CONFLICT
+    halt_new_entries_for_remainder_of_trading_date: true
+    at_that_timestamp:
+      - Generate no entry candidate.
+      - Never choose by processing order, zone distance, zone size, dictionary/file/iteration order or hypothetical profit/target.
+      - Mark all conflicting confirmations non-executable; preserve all events for diagnostics.
+    after_conflict:
+      - Cancel all working entry orders.
+      - Preserve protective exits for any existing position.
+      - Record the daily halt reason.
+      - Continue market-data validation and diagnostic logging.
+      - No fresh setup can restore entry eligibility that day.
+    reporting: number of conflict days, percentage of otherwise eligible days, long and short zones involved, subsequent hypothetical movement (diagnostics only)
+    status: candidate B0 policy; not optimised before the frozen baseline is tested
+  same_direction_candidates: >
+    Multiple same-direction confirmations at one decision time are all recorded
+    as entry candidates with complete identifiers and marked as requiring
+    selection. No choice is made in Round 11 and processing order never
+    selects one implicitly; selection belongs to the entry/room-to-target round.
+  directional_state_reset:
+    rule: A confirmation is tied permanently to its exact acceptance and zone version.
+    non_executable_when: [used by an entry candidate, invalidated by a directional conflict, invalidated by cutoff, invalidated by a blackout, invalidated by a zone-version change, invalidated by missing/incomplete data, its later-defined entry-order validity expires]
+    history: Historical direction events remain in the audit log.
 
 # --- Structural level definitions -------------------------------------------------------------------------
 structural_levels:
@@ -652,11 +690,22 @@ structural_levels:
 
 # --- Market structure (added Round 2) -------------------------------------------------------------------
 market_structure:
-  structure_bar_interval: TBD
-  swing_point_definition: TBD
-  bullish_progression_definition: TBD
-  bearish_progression_definition: TBD
-  mixed_structure_handling: TBD
+  # Round 11 (rule owner, 2026-09-29): no additional swing/trend filter in B0.
+  definition: ACCEPTANCE_PULLBACK_HOLD_CONTINUATION
+  additional_swing_structure_filter: NOT_APPLICABLE
+  rationale: >
+    B0's structural progression is fully defined by directional arming ->
+    zone interaction -> directional acceptance -> pullback -> zone hold ->
+    continuation close. This does not claim swing structure lacks value; it
+    avoids adding an untested parameter family before the frozen baseline is
+    measured. Not implemented: swing-high/low detection, higher-high /
+    higher-low or lower-high / lower-low filters, pivot strength, zigzag,
+    fractal swings, additional trend indicators.
+  structure_bar_interval: "NOT_APPLICABLE: no additional swing filter in B0 (decision bars remain five-minute)"
+  swing_point_definition: "NOT_APPLICABLE: no swing detection in B0"
+  bullish_progression_definition: "NOT_APPLICABLE: bullish progression = the confirmed long sequence (market_structure.definition)"
+  bearish_progression_definition: "NOT_APPLICABLE: bearish progression = the confirmed short sequence (market_structure.definition)"
+  mixed_structure_handling: "NOT_APPLICABLE: no swing classification; simultaneous opposite confirmations are handled by direction.conflict_resolution"
 
 # --- Acceptance, rejection and breakout definitions ---------------------------------------------------------
 acceptance_rejection_breakout:
@@ -821,10 +870,12 @@ level_states:
       meaning: Arming is not an entry signal, approach, touch, breach, acceptance or rejection.
       stored: [armed_side, armed_timestamp, armed_close, active_attempt_direction, attempt_id, attempt_start_timestamp, attempt_status]
     episode_start: >
-      UPWARD requires ARMED_FROM_BELOW and a SUBSEQUENT complete bar that
-      approaches from below, touches, or qualifies as a gap above; DOWNWARD
-      mirrors from ARMED_FROM_ABOVE. The bar that arms can never begin the
-      attempt (five-minute OHLC cannot order the two).
+      AMENDED (D-026): an attempt (interaction episode) begins only at the first
+      touch, directionally valid breach or qualifying gap after arming on an
+      EARLIER bar. UPWARD needs ARMED_FROM_BELOW; DOWNWARD needs
+      ARMED_FROM_ABOVE. An approach alone never starts an attempt. The bar that
+      arms can never begin the attempt. The attempt_id is created and the
+      rejection clock starts at that moment.
     rearming: >
       After an episode ends, expires or is invalidated, a new attempt in the
       same direction needs a fresh clear-side close (a new arm) and then a
@@ -840,7 +891,6 @@ level_states:
       - the entry window ends
       - the zone expires
       - after the rejection window expired, a clear-side close back on the origin side (which rearms)
-      - an approach-only episode is withdrawn (see approach_only_episodes)
     opposite_arming: >
       CONFIRMED (D-025): opposite-side arming is evaluated only after the
       current episode has ended. While an episode is active, closes in its
@@ -854,16 +904,25 @@ level_states:
     on_rejection: >
       Record the rejection and end the episode; the rejection close may rearm
       the zone, but a new attempt still needs a subsequent bar.
-    approach_only_episodes: >
-      CONFIRMED (D-025): an approach may begin an episode, but the three-bar
-      rejection window starts only at the first touch, directionally valid
-      breach or qualifying gap. Until then the episode is APPROACH_ONLY: a close
-      back on the origin side is never a rejection. If, on a bar after the
-      episode's start bar, price closes back at the origin-side arming
-      threshold before any touch, breach or gap, the episode ends as
-      APPROACH_WITHDRAWN (not rejected), the armed state is restored, a later
-      bar is required to begin another attempt, and the approach history is
-      kept for diagnostics.
+    approach_sequences: >
+      CONFIRMED (D-026): an approach to an armed zone is tracked separately as an
+      approach observation (approach_sequence_id, approach_direction,
+      approach_start_timestamp, approach_most_recent_timestamp,
+      approach_status in ACTIVE_APPROACH / APPROACH_WITHDRAWN /
+      APPROACH_CONVERTED_TO_ATTEMPT / APPROACH_INVALIDATED). It creates no
+      attempt_id, starts no rejection window and never increments attempt
+      counts. A later touch, directional breach or qualifying gap marks it
+      APPROACH_CONVERTED_TO_ATTEMPT and creates the attempt then. A complete
+      close back at the origin-side threshold before interaction (from below:
+      close <= L - 0.50; from above: close >= U + 0.50) marks it
+      APPROACH_WITHDRAWN: history kept, armed state kept, no attempt; a
+      subsequent bar may begin a new approach sequence. Diagnostics report
+      approach counts and attempt counts separately.
+    jump_without_qualifying_gap: >
+      PENDING OWNER CONFIRMATION (D-027): a directional breach always includes a
+      touch unless the bar jumped the whole zone; such a jump starts an attempt
+      only if it is a QUALIFYING gap (clear-side previous close), otherwise the
+      gap threshold would be bypassed.
   after_acceptance: >
     Acceptance is an immutable historical event with its timestamp and a
     unique acceptance_id. Its entry eligibility is governed only by the
@@ -905,8 +964,9 @@ confirmation:
       step_1_acceptance: ACCEPTED_ABOVE under Round 9 (acceptance_id and timestamp stored)
       step_2_retest_hold: >
         A subsequent complete eligible bar (never the acceptance bar itself)
-        with low <= U + retest_distance AND low >= L - 0.25 AND close >= U +
-        0.50 becomes LONG_RETEST_HOLD. Store retest_hold_timestamp/high/low/
+        with low <= U + retest_distance AND low > L - 0.25 AND close >= U +
+        0.50 becomes LONG_RETEST_HOLD. (Tick-aligned, the lowest permissible
+        retest low is L itself; a print one tick below L fails.) Store retest_hold_timestamp/high/low/
         close, acceptance_id and zone_version_id.
       step_3_continuation: >
         The immediately following complete eligible bar closes >= retest-hold
@@ -916,7 +976,8 @@ confirmation:
       step_1_acceptance: ACCEPTED_BELOW under Round 9
       step_2_retest_hold: >
         A subsequent complete eligible bar with high >= L - retest_distance AND
-        high <= U + 0.25 AND close <= L - 0.50 becomes SHORT_RETEST_HOLD.
+        high < U + 0.25 AND close <= L - 0.50 becomes SHORT_RETEST_HOLD. (The
+        highest permissible retest high is U itself; one tick above U fails.)
       step_3_continuation: >
         The immediately following complete eligible bar closes <= retest-hold
         low - 0.25 -> CONFIRMED_SHORT_CONTINUATION. A wick alone is
@@ -973,11 +1034,29 @@ confirmation:
       - The zone version changes.
       - The long bar trades at or below L - 0.25 / the short bar at or above U + 0.25.
     no_carry: A retest-hold candidate is never carried across any interruption.
-    equality_conflict_resolution: >
-      PENDING OWNER CONFIRMATION (D-026): a low of exactly L - 0.25 (long) or a
-      high of exactly U + 0.25 (short) meets both the retest-hold limit
-      ("low >= L - 0.25", equality qualifies) and the failure rule ("trades at
-      or below L - 0.25"). Implemented: the failure rule wins.
+    hold_failure_exclusivity: >
+      CONFIRMED (D-026): hold and failure inequalities are mutually exclusive.
+      Long hold requires low > L - 0.25, failure is low <= L - 0.25; short hold
+      requires high < U + 0.25, failure is high >= U + 0.25. Equality belongs to
+      the failure boundary, never the hold boundary.
+    replay_acceptances: >
+      CONFIRMED (D-026): an acceptance formed during the 09:30-09:45 replay of a
+      prior-RTH/overnight-only zone may start a confirmation sequence at its
+      real timestamp; its six-bar clock is never reset or extended at 09:45, and
+      pre-09:45 bars count normally toward lifetime, hold, failure, timeout and
+      confirmation. No order or entry is permitted before 09:45: a confirmation
+      completed before 09:45 is historical and non-executable and is not carried
+      forward; a confirmation completing at or after 09:45 (exactly 09:45
+      included) may become an entry candidate subject to the later entry rules
+      and signal-to-order delay. Opening-range zones still start fresh at 09:45.
+      Examples: acceptance 09:35 -> hold 09:40 -> continuation 09:45 may create a
+      09:45 candidate; acceptance 09:40 -> hold 09:45 at the earliest ->
+      confirmation no earlier than 09:50.
+    cutoff: >
+      CONFIRMED (D-026): evaluated at the decision bar's close; a continuation
+      bar closing at 11:30 is INVALIDATED_BY_CUTOFF. A confirmation at 11:25 may
+      proceed to the later entry process if its order can be submitted before
+      11:30.
   acceptance_lifetime:
     outcomes: [CONFIRMED, FAILED, TIMED_OUT, INVALIDATED_BY_INTERRUPTION, INVALIDATED_BY_BLACKOUT, INVALIDATED_BY_CUTOFF, INVALIDATED_BY_ZONE_CHANGE]
     rule: >

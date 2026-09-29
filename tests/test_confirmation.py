@@ -357,3 +357,21 @@ def test_every_parameter_comes_from_the_specification():
     spec["confirmation"]["parameters"]["confirmation_type"] = "CHASE_EXTENSION"
     invalid = {p.path for p in check_rule_freeze(spec).problems if p.kind == "INVALID"}
     assert {"confirmation.max_bars_after_acceptance", "confirmation.parameters.confirmation_type"} <= invalid
+
+
+# =========================================================================== D-026 exclusivity
+
+
+def test_hold_and_failure_inequalities_no_longer_overlap():
+    s = Session()
+    s.feed(20008.0, 20000.0, 20005.0)  # low exactly L: the lowest permissible long retest low
+    assert s.sequence.hold is not None and s.sequence.outcome is None
+    s = Session()
+    s.feed(20008.0, 19999.75, 20005.0)  # one tick below L: failure, never a hold
+    assert s.sequence.outcome is O.FAILED and s.sequence.hold is None
+    s = Session("SHORT")
+    s.feed(20004.0, 19993.0, 19996.0)  # high exactly U: permissible
+    assert s.sequence.hold is not None
+    s = Session("SHORT")
+    s.feed(20004.25, 19993.0, 19996.0)  # one tick above U: failure
+    assert s.sequence.outcome is O.FAILED and s.sequence.hold is None

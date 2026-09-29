@@ -18,7 +18,7 @@ during a **directional attempt** (an "interaction episode"), and an attempt
 must be set up first:
 
 ```
-arm (clear-side close)  →  a LATER bar approaches / touches / gaps  →  attempt starts
+arm (clear-side close)  →  a LATER bar touches / gaps (approach alone = observation only)  →  attempt starts
                                                                         ↓
                          accepted (2 qualifying closes)  or  rejected (within 3 bars)
                          or ended (interruption, blackout, window end, rearm after expiry)
@@ -38,15 +38,27 @@ Arming only means "price is clearly established on this side." It is not an
 entry signal. **The bar that arms can never also start an attempt**,
 because a five-minute bar can't show which happened first.
 
-## 2. Starting an attempt
+## 2. Approaches and attempts (D-026)
+
+An **approach** (coming within the proximity tolerance of an armed zone
+without touching it) is only an *observation*. It gets an
+`approach_sequence_id` and a status: ACTIVE_APPROACH, APPROACH_WITHDRAWN,
+APPROACH_CONVERTED_TO_ATTEMPT or APPROACH_INVALIDATED. It **never** gets an
+`attempt_id`, never starts the rejection clock, and never counts as an
+attempt.
 
 | Attempt | Needs |
 |---|---|
-| UPWARD | armed from below, then a *later* bar that approaches from below, touches, or gaps above |
-| DOWNWARD | armed from above, then a *later* bar that approaches from above, touches, or gaps below |
+| UPWARD | armed from below, then a *later* bar that **touches**, or makes a **qualifying gap** above |
+| DOWNWARD | armed from above, then a *later* bar that **touches**, or makes a **qualifying gap** below |
 
-Starting an attempt uses up the arm. Every attempt gets a new
-`attempt_id`.
+A directional breach always includes a touch unless the bar jumped the whole
+zone, and a jump counts only if it is a qualifying gap (D-027). Starting an
+attempt uses up the arm, creates a new `attempt_id`, starts the rejection
+clock, and converts any active approach. If price closes back at the
+origin-side threshold before any interaction, the approach is **withdrawn**.
+The arm is kept and no attempt is created. Diagnostics report approach and
+attempt counts separately.
 
 **Qualifying gap above:** the previous close was ≤ L − 0.50 and this bar's
 low is above U. `GAPPED_ABOVE_ZONE` is recorded, and no touch is ever
@@ -78,10 +90,6 @@ later.
 * **Interruption:** an incomplete or missing decision bar, or a news
   blackout. **All executable state is removed** (arm, attempt, counters,
   origin), the history is kept, and a fresh arm is needed afterwards.
-* **Approach withdrawn:** an attempt that has only *approached*, with no
-  touch, breach or gap yet, ends as `APPROACH_WITHDRAWN` if a later bar
-  closes back at the origin-side arming threshold. It is *not* a rejection.
-  The zone is rearmed, and a later bar must start any new attempt.
 * The entry window closes (11:30), or the zone expires.
 
 A new attempt in the same direction **always needs a fresh arm**, followed
@@ -114,8 +122,6 @@ acceptance → rejection → two-sided breach → breach → touch → approach 
    only after the current attempt ends. An attempt can't be "stolen" by an
    opposite approach created by its own successful move. The former ending
    "an opposite episode arms and begins" has been removed.
-2. **Approach-only attempts.** The rejection window opens at the first
-   touch, breach or gap. Before that, the attempt can only be withdrawn,
-   never rejected.
+2. **Approaches are not attempts** (replaced by D-026): see section 2.
 3. **Every acceptance** gets a unique `acceptance_id`, which confirmation
    refers to.
