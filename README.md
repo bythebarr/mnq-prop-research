@@ -75,6 +75,7 @@ example, run `mnq rules check` instead of `uv run mnq rules check`.
 | Goal | Command |
 |---|---|
 | 1. Check the rule freeze (lists every unanswered question) | `uv run mnq rules check` |
+| 1b. Check one staged readiness gate | `uv run mnq rules stage SIGNAL_REPLAY` |
 | 2. Generate SYNTHETIC FAKE test data | `uv run mnq data synth` |
 | 2b. …with known defects planted, to see validation catch them | `uv run mnq data synth --with-defects` |
 | 3. Validate a data file | `uv run mnq data validate data/interim/synthetic/synthetic_FAKE_mnq_seed20240108.parquet` |
@@ -111,6 +112,8 @@ mnq-prop-research/
 │   ├── ORDER_LIFECYCLE.md     ← plain-English entry-order lifecycle (simulation only)
 │   ├── PROTECTIVE_ORDERS.md   ← plain-English stop/target bracket (simulation only)
 │   ├── CRITICAL_PATH.md       ← what remains, by milestone, to reach Baseline Test 001
+│   ├── READINESS_GATES.md     ← the five staged gates (signal replay … live)
+│   ├── TRADE_ACCOUNTING.md    ← costs, slippage, P&L/R, MAE/MFE, data quality
 │   └── DECISIONS.md           ← architecture decisions and rationale
 ├── data/                      ← NOT committed to Git (except placeholders)
 │   ├── raw/                   ← vendor files exactly as received
@@ -135,6 +138,10 @@ mnq-prop-research/
 │   ├── entry_order.py         ← Round 13 simulated market entry-order lifecycle (no broker)
 │   ├── sizing.py              ← D-029 floor/skip sizing mechanics (dollar risk unresolved)
 │   ├── protection.py          ← Round 14 simulated protective stop/target OCO bracket (no broker)
+│   ├── readiness.py           ← Round 15 staged readiness gates
+│   ├── costs.py               ← Round 15 commission and slippage model
+│   ├── accounting.py          ← Round 15 trade P&L, R and MAE/MFE
+│   ├── data_quality.py        ← Round 15 missing/bad-data classification
 │   ├── level_states.py        ← Round 9 zone interaction states (component only)
 │   ├── structural_levels.py   ← Round 8 level rules (component only; not a backtest)
 │   └── synthetic_data.py      ← FAKE data for software tests only

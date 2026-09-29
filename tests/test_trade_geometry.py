@@ -330,6 +330,6 @@ def test_eligibility_is_typed_and_fails_closed():
 
 
 def test_execution_eligibility_integration_blocks_execution_until_done():
-    assert SPEC["execution_eligibility_integration"]["status"] == "REQUIRED_BEFORE_EXECUTABLE"
+    assert SPEC["execution_eligibility_integration"]["historical_signal_producers_status"] == "REQUIRED_BEFORE_EXECUTABLE"
     assert SPEC["execution_eligibility_integration"]["controls"] == list(ExecutionEligibility.control_names())
-    assert "execution_eligibility_integration.status" in check_rule_freeze(SPEC).unresolved_paths()
+    assert "execution_eligibility_integration.historical_signal_producers_status" in check_rule_freeze(SPEC).unresolved_paths()

@@ -564,21 +564,25 @@ calculated?
 
 ## 9. Setup and direction
 
-### `setup.definition`
-**Question:** What measurable market condition makes a trade **possible**?
-This is before any trigger.
-**Illustrative only:** "Price comes within the proximity tolerance of an
-active structural level during the trading window."
+### `setup.name`
+*(Added in Round 15.)*
+**Question:** What is the setup called?
+**Illustrative only:** `MNQ_OBJECTIVE_STRUCTURE_CONTINUATION_B0`.
 
-### `setup.preconditions`
-**Question:** What else must be true? For example, a minimum range, time
-since the open, or no open position.
-**Illustrative only:** "Flat, and fewer than the maximum trades taken
-today."
+### `setup.long_definition`
+*(Added in Round 15.)*
+**Question:** In one summary sentence, what is a long setup? (A pointer to the frozen sections, not a copy of them.)
+**Illustrative only:** "Armed interaction → ACCEPTED_ABOVE → pullback-hold → confirmation → room → selection → CLEAR."
 
-### `setup.setup_expiry`
-**Question:** How long does a setup stay valid if no trigger occurs?
-**Illustrative only:** "Six decision bars."
+### `setup.short_definition`
+*(Added in Round 15.)*
+**Question:** In one summary sentence, what is a short setup?
+**Illustrative only:** The mirror of the long definition.
+
+### `setup.authoritative_sections`
+*(Added in Round 15.)*
+**Question:** Which specification sections hold the actual rules?
+**Illustrative only:** `[structural_levels, level_states, confirmation, …]`.
 
 ### `direction.long_conditions`
 **Question:** Exactly when is a setup traded **long**?
@@ -765,14 +769,25 @@ stop?
 the day, and when may a fresh setup still trade?
 **Illustrative only:** "A news block: fresh setups later. Unknown state: halt."
 
-### `execution_eligibility_integration.status`
-*(Added in D-028.)*
-**Question:** Have the news, safety, session, data and position controls
-been integrated so that they feed typed states to the geometry and entry
-code?
-**Why it matters:** Until they are, nothing can prove that an entry is safe,
-so execution stays blocked (`REQUIRED_BEFORE_EXECUTABLE`).
-**Illustrative only:** "Integrated and verified by tests on real calendars."
+### `execution_eligibility_integration.historical_signal_producers_status`
+*(Added in Round 15. SIGNAL_REPLAY)*
+**Question:** Do historical session, news, data, calendar, conflict and candidate states exist as typed inputs for replay?
+**Illustrative only:** "Built and verified on the historical calendars."
+
+### `execution_eligibility_integration.simulated_execution_producers_status`
+*(Added in Round 15. ONE_CONTRACT_BACKTEST)*
+**Question:** Do simulated position, allowance, stop-validity, protection and cutoff states exist?
+**Illustrative only:** "Built and verified in the replay."
+
+### `execution_eligibility_integration.live_producers_status`
+*(Added in Round 15. PAPER_FORWARD)*
+**Question:** Do live producers of every control exist?
+**Illustrative only:** "Not needed for historical research."
+
+### `execution_eligibility_integration.simulated_producers_required`
+*(Added in Round 15.)*
+**Question:** Which simulated producers must a one-contract backtest have?
+**Illustrative only:** "Session, news, data, position, allowance, …"
 
 ### `execution_eligibility_integration.requirement`
 *(Added in D-028.)*
@@ -811,6 +826,11 @@ permits an entry."
 *(Added in D-031.)*
 **Question:** What if the broker's position disagrees with ours?
 **Illustrative only:** "Treat the broker's as real; reconcile; no new entries."
+
+### `protective_orders.final_flattening_legs`
+*(Added in Round 15.)*
+**Question:** Which labels describe the leg that made the position flat?
+**Illustrative only:** `[STOP, TARGET, NORMAL_TIME_EXIT, …]`.
 
 ### `protective_orders.parameters`
 *(Added in Round 14.)*
@@ -928,6 +948,11 @@ independently of the stop?
 **Illustrative only:** "Cancel unfilled orders. Exit an open position at
 market at the next bar open."
 
+### `structural_invalidation.action_rules`
+*(Added in Round 15.)*
+**Question:** How does the invalidation exit behave in detail?
+**Illustrative only:** "Stop-market immediately; no waiting for a bar close."
+
 ### `stop_placement.method`
 **Question:** Where exactly is the protective stop placed?
 **Illustrative only:** "Beyond the rejection bar's extreme, plus the
@@ -1034,6 +1059,26 @@ when?
 **Question:** Is a trade closed after a maximum holding time?
 **Illustrative only:** "Exit at market after 60 minutes."
 
+### `position_management.normal_flatten_time`
+*(Added in Round 15.)*
+**Question:** At what time is an open trade closed as its planned exit?
+**Illustrative only:** `"12:00:00"`.
+
+### `position_management.normal_flatten_timezone`
+*(Added in Round 15.)*
+**Question:** In which time zone?
+**Illustrative only:** `America/New_York`.
+
+### `position_management.normal_time_exit_order_type`
+*(Added in Round 15.)*
+**Question:** Which order closes the trade at that time?
+**Illustrative only:** `MARKET`.
+
+### `position_management.normal_time_exit_procedure`
+*(Added in Round 15.)*
+**Question:** What exactly happens at the normal exit time?
+**Illustrative only:** "Cancel target, keep stop, market exit, confirm flat."
+
 ### `position_management.risk_per_trade`
 *(Added in Round 2 for "sizes the MNQ position from that stop distance and
 the permitted account risk".)*
@@ -1067,6 +1112,71 @@ permitted amount?
 **Question:** What is the hard cap on contracts in one trade, whatever the
 sizing formula says? It must not exceed the prop firm's limit.
 **Illustrative only:** `5`.
+
+### `trade_accounting.gross_pnl`
+*(Added in Round 15.)*
+**Question:** How is gross P&L calculated per fill leg?
+**Illustrative only:** "(exit − entry) × $2 × quantity for a long."
+
+### `trade_accounting.net_pnl`
+*(Added in Round 15.)*
+**Question:** How is net P&L calculated, without charging anything twice?
+**Illustrative only:** "Gross minus commissions."
+
+### `trade_accounting.commission_accounting`
+*(Added in Round 15.)*
+**Question:** How are commissions charged for partial fills?
+**Illustrative only:** "$0.91 per contract side."
+
+### `trade_accounting.planned_risk`
+*(Added in Round 15.)*
+**Question:** What planned risk is kept, separately from actual risk?
+**Illustrative only:** "Planned points and dollars before costs."
+
+### `trade_accounting.actual_initial_risk`
+*(Added in Round 15.)*
+**Question:** What is the actual initial risk used for R?
+**Illustrative only:** "Price risk + stop slippage + round-trip commission."
+
+### `trade_accounting.result_r`
+*(Added in Round 15.)*
+**Question:** How is the result expressed in R?
+**Illustrative only:** "Net P&L ÷ actual initial risk."
+
+### `trade_accounting.excursions`
+*(Added in Round 15.)*
+**Question:** How are the best and worst prices during a trade (MFE/MAE) measured?
+**Illustrative only:** "From the first fill to flat, never clamped."
+
+### `trade_accounting.record_fields`
+*(Added in Round 15.)*
+**Question:** What must every trade record contain?
+**Illustrative only:** "IDs, legs, P&L, R, excursions, scenarios, hashes."
+
+### `trade_accounting.reproducibility_hashes`
+*(Added in Round 15.)*
+**Question:** Which hashes make a trade reproducible?
+**Illustrative only:** "Spec, code, data and calendar hashes."
+
+### `research_pipeline.historical_data_ingestion_status`
+*(Added in Round 15.)*
+**Question:** Is historical data ingestion built and verified?
+**Illustrative only:** "Verified on the Databento sample."
+
+### `research_pipeline.historical_calendar_producers_status`
+*(Added in Round 15.)*
+**Question:** Are the historical CME and news calendar producers built?
+**Illustrative only:** "Built from the dated calendar artifacts."
+
+### `research_pipeline.deterministic_replay_wiring_status`
+*(Added in Round 15.)*
+**Question:** Is the end-to-end signal replay wired and tested?
+**Illustrative only:** "Wired; deterministic on repeat runs."
+
+### `research_pipeline.execution_simulation_wiring_status`
+*(Added in Round 15.)*
+**Question:** Are entry, bracket and exit simulation wired into the replay?
+**Illustrative only:** "Wired and tested."
 
 ## 12. Daily limits, re-entry and flattening
 
@@ -1277,31 +1387,40 @@ fees?
 **Question:** Where does the number come from, and as of what date?
 **Illustrative only:** "The prop firm's fee page, retrieved 2026-01-15."
 
-### `slippage.entry_ticks`
-**Question:** How many ticks worse than the reference price is each entry
-assumed to fill?
-**Illustrative only:** `1`.
+### `commissions.per_side_per_contract_usd`
+*(Added in Round 15.)*
+**Question:** What is charged for each contract side (entry or exit)?
+**Illustrative only:** `"0.91"`.
 
-### `slippage.stop_exit_ticks`
-**Question:** How many ticks of slippage apply to stop exits? Stops are
-often worse, because they fill in fast markets.
-**Illustrative only:** `2`.
+### `commissions.source_archive_status`
+*(Added in Round 15.)*
+**Question:** Has the fee source been archived (URL, time, hash)?
+**Illustrative only:** "Required before the one-contract backtest."
 
-### `slippage.target_exit_ticks`
-**Question:** How many ticks of slippage apply to target (limit) exits? And
-does a target need price to trade *through* it to count as filled?
-**Illustrative only:** "0 ticks, but price must trade 1 tick through the
-target."
+### `commissions.stress_multipliers`
+*(Added in Round 15.)*
+**Question:** Which commission stress multiples are reported?
+**Illustrative only:** `{BASE: "1.00", COMMISSION_STRESS_125: "1.25", …}`.
 
-### `slippage.market_exit_ticks`
-**Question:** How many ticks of slippage apply to market exits (time exits,
-flattening, invalidation)?
-**Illustrative only:** `1`.
+### `slippage.baseline_ticks`
+*(Added in Round 15.)*
+**Question:** How many adverse ticks does each order type pay, per contract?
+**Illustrative only:** `entry_market: 1`, `protective_stop_market: 2`, …
 
-### `slippage.stress_test_multipliers`
-**Question:** By what multiples will slippage and commissions be scaled
-up, to test that results survive worse costs?
-**Illustrative only:** `[1.0, 1.5, 2.0]`.
+### `slippage.adverse_direction_rule`
+*(Added in Round 15.)*
+**Question:** Which way does slippage move a fill?
+**Illustrative only:** "Buys higher, sells lower."
+
+### `slippage.stress_multipliers`
+*(Added in Round 15.)*
+**Question:** Which stress multiples are reported?
+**Illustrative only:** `{BASE_SLIPPAGE: 1, DOUBLE_SLIPPAGE: 2, TRIPLE_SLIPPAGE: 3}`.
+
+### `slippage.actual_fill_rule`
+*(Added in Round 15.)*
+**Question:** How do you avoid charging slippage twice?
+**Illustrative only:** "Modelled fills only; actual fills keep their price."
 
 ## 17. Prop-account rules
 

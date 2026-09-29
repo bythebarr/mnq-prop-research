@@ -36,6 +36,7 @@ backtesting, broker connectivity.
 
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
@@ -53,7 +54,7 @@ from mnq_research.entry_order import (
     OperationalAnomaly,
     stop_validity_problems,
 )
-from mnq_research.structural_levels import TICK
+from mnq_research.structural_levels import NEW_YORK, TICK, ny_time
 
 STOP_ORDER_TYPE = "STOP_MARKET"
 TARGET_ORDER_TYPE = "LIMIT"
@@ -138,28 +139,39 @@ class ExitOutcome(str, Enum):
     PROTECTION_FAILURE_FLATTEN = "PROTECTION_FAILURE_FLATTEN"
     ENTRY_INVALIDATION_FLATTEN = "ENTRY_INVALIDATION_FLATTEN"
     MANUAL_SAFETY_FLATTEN = "MANUAL_SAFETY_FLATTEN"
+    NORMAL_TIME_EXIT = "NORMAL_TIME_EXIT"  # Round 15: the planned 12:00 New York market exit
     MIXED_STOP_TARGET_EXIT = "MIXED_STOP_TARGET_EXIT"  # D-031: both stop and target filled portions
     UNKNOWN_EXIT_STATE = "UNKNOWN_EXIT_STATE"
 
 
 class FlatteningLeg(str, Enum):
-    """D-031: which leg made the position flat (recorded alongside the outcome)."""
+    """Which leg made the position flat; always the most specific known value (Round 15)."""
 
     STOP = "STOP"
     TARGET = "TARGET"
-    EMERGENCY = "EMERGENCY"
-    OTHER = "OTHER"
+    NORMAL_TIME_EXIT = "NORMAL_TIME_EXIT"
+    NEWS_FLATTEN = "NEWS_FLATTEN"
+    SESSION_BACKSTOP = "SESSION_BACKSTOP"
+    PROTECTION_FAILURE = "PROTECTION_FAILURE"
+    ENTRY_INVALIDATION = "ENTRY_INVALIDATION"
+    MANUAL_SAFETY = "MANUAL_SAFETY"
+    OTHER = "OTHER"  # only when no defined category fits
+    UNKNOWN = "UNKNOWN"
 
 
-# Market flattens driven by a safety failure or the session backstop count as EMERGENCY legs.
-EMERGENCY_FLATTEN_OUTCOMES = frozenset(
-    {ExitOutcome.SESSION_EMERGENCY_FLATTEN, ExitOutcome.PROTECTION_FAILURE_FLATTEN, ExitOutcome.ENTRY_INVALIDATION_FLATTEN}
-)
+FLATTEN_LEG = {
+    ExitOutcome.NORMAL_TIME_EXIT: FlatteningLeg.NORMAL_TIME_EXIT,
+    ExitOutcome.SCHEDULED_NEWS_FLATTEN: FlatteningLeg.NEWS_FLATTEN,
+    ExitOutcome.SESSION_EMERGENCY_FLATTEN: FlatteningLeg.SESSION_BACKSTOP,
+    ExitOutcome.PROTECTION_FAILURE_FLATTEN: FlatteningLeg.PROTECTION_FAILURE,
+    ExitOutcome.ENTRY_INVALIDATION_FLATTEN: FlatteningLeg.ENTRY_INVALIDATION,
+    ExitOutcome.MANUAL_SAFETY_FLATTEN: FlatteningLeg.MANUAL_SAFETY,
+}
 
 
 # Flatten reasons that a caller may start deliberately (failures start their own).
 SCHEDULED_FLATTEN_OUTCOMES = frozenset(
-    {ExitOutcome.SESSION_EMERGENCY_FLATTEN, ExitOutcome.SCHEDULED_NEWS_FLATTEN, ExitOutcome.MANUAL_SAFETY_FLATTEN}
+    {ExitOutcome.NORMAL_TIME_EXIT, ExitOutcome.SESSION_EMERGENCY_FLATTEN, ExitOutcome.SCHEDULED_NEWS_FLATTEN, ExitOutcome.MANUAL_SAFETY_FLATTEN}
 )
 
 EMERGENCY_ACTIONS = (
@@ -200,6 +212,7 @@ class ProtectionParams:
     same_bar_policy: str
     live_or_paper_order_submission: str
     point_value_usd: Decimal
+    normal_flatten_time: dt.time
     specification_version: str
     configuration_hash: str
 
@@ -223,6 +236,7 @@ class ProtectionParams:
             p["same_bar_stop_target_policy"],
             spec["entry_order_lifecycle"]["protective_order_dependency"]["live_or_paper_order_submission"],
             Decimal(str(spec["instrument"]["point_value_usd"])),
+            dt.time.fromisoformat(str(spec["position_management"]["normal_flatten_time"])),
             str(spec["specification"]["version"]),
             rule_spec_hash(dict(spec)),
         )
@@ -232,6 +246,8 @@ class ProtectionParams:
             raise ValueError(f"B0 implements only {expected}, got {actual}")
         if params.live_or_paper_order_submission != LIVE_OR_PAPER_SUBMISSION_STATUS:
             raise ValueError("live or paper order submission is prohibited")
+        if spec["position_management"]["normal_flatten_timezone"] != str(NEW_YORK):
+            raise ValueError("the normal flatten time is defined in America/New_York")
         return params
 
 
@@ -630,7 +646,13 @@ class ProtectiveBracket:
         """Scheduled (session/news) or manual safety flatten: cancel the target, keep the stop, close at market."""
         if outcome not in SCHEDULED_FLATTEN_OUTCOMES:
             raise ValueError("failure flattens are started by the failure itself")
-        if self.state is ProtectionState.TRADE_CLOSED:
+        if (
+            self.state in (ProtectionState.TRADE_CLOSED, ProtectionState.AWAITING_FLAT_CONFIRMATION)
+            or self.flatten_requested_utc is not None
+            or self.open_quantity == 0
+        ):
+            # An earlier stop, target, news, safety or normal exit already governs: never a duplicate flatten.
+            self._log(at, "FLATTEN_NOT_DUPLICATED", outcome.value)
             return
         if self.flatten_reason is None:
             self.flatten_reason = outcome
@@ -641,6 +663,11 @@ class ProtectiveBracket:
             self.state = ProtectionState.SCHEDULED_FLATTEN_IN_PROGRESS
         self._act(("CANCEL_TARGET", "KEEP_PROTECTIVE_STOP_UNTIL_FLAT_RESOLVED", "SUBMIT_CONTROLLED_MARKET_FLATTEN", "CONFIRM_ZERO_POSITION"))
         self._log(at, "FLATTEN_REQUESTED", outcome.value)
+
+    def apply_normal_time_exit(self, at: pd.Timestamp) -> None:
+        """At or after the normal flatten time (12:00 New York), begin the planned market exit once."""
+        if at >= ny_time(at.tz_convert(NEW_YORK).date(), self.params.normal_flatten_time):
+            self.begin_flatten(at, ExitOutcome.NORMAL_TIME_EXIT)
 
     def on_exit_fill(self, at: pd.Timestamp, source: ExitSource, quantity: int, price: Decimal, fill_source: FillSource) -> None:
         """An authoritative exit fill (stop, target or flatten market order)."""
@@ -734,10 +761,10 @@ class ProtectiveBracket:
             self.final_flattening_leg = FlatteningLeg.STOP
         elif self.closing_source is ExitSource.TARGET:
             self.final_flattening_leg = FlatteningLeg.TARGET
-        elif self.flatten_reason in EMERGENCY_FLATTEN_OUTCOMES:
-            self.final_flattening_leg = FlatteningLeg.EMERGENCY
+        elif self.closing_source is ExitSource.FLATTEN and self.flatten_reason in FLATTEN_LEG:
+            self.final_flattening_leg = FLATTEN_LEG[self.flatten_reason]
         else:
-            self.final_flattening_leg = FlatteningLeg.OTHER
+            self.final_flattening_leg = FlatteningLeg.UNKNOWN
         if self.exit_state_unknown:
             outcome = ExitOutcome.UNKNOWN_EXIT_STATE
         elif {ExitSource.STOP, ExitSource.TARGET} <= sources:
@@ -878,3 +905,28 @@ def resolve_minute(
         if decision is not None:
             return decision
     return first_exit(side, stop, target, (minute_bar,), params)
+
+
+def resolve_entry_minute(
+    side: Side,
+    entry_fill_utc: pd.Timestamp,
+    stop: Decimal,
+    target: Decimal,
+    entry_minute_bar: PriceInterval,
+    params: ProtectionParams,
+    finer: Iterable[PriceInterval] = (),
+) -> ExitDecision | None:
+    """Round 15: exits within the entry minute. Only events at/after the authoritative entry fill count.
+
+    Finer chronology (trades/one-second bars after the fill) is used when available. With one-minute data only,
+    a reachable stop is assumed to come first and a target is NEVER awarded from unresolved ordering.
+    """
+    after = [i for i in _authoritative(finer) if i.start_utc >= entry_fill_utc]
+    if after:
+        return first_exit(side, stop, target, after, params, ("CHRONOLOGY_FROM_HIGHER_RESOLUTION",))
+    if _stop_hit(side, stop, entry_minute_bar):
+        return ExitDecision(
+            ExitSource.STOP, entry_minute_bar.start_utc, entry_minute_bar.source_reference, None, STOP_FILL_PRICE_MODEL,
+            ("SAME_MINUTE_ENTRY_EXIT_AMBIGUITY", SAME_BAR_POLICY),
+        )
+    return None  # an unresolved target touch in the entry minute is not a fill

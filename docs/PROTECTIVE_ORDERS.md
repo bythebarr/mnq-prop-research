@@ -122,12 +122,11 @@ Quotes and local estimates never trigger or fill anything.
 
 * **Mixed exits.** If the stop and the target each fill part of the position,
   the trade is `MIXED_STOP_TARGET_EXIT`, never named after whichever fill
-  came last. `final_flattening_leg` then records which leg made it flat:
-  * STOP;
-  * TARGET;
-  * EMERGENCY: a session backstop, protection-failure or entry-invalidation
-    flatten;
-  * OTHER: a news or manual flatten.
+  came last. `final_flattening_leg` then records the most specific leg that
+  made it flat (Round 15): STOP, TARGET, NORMAL_TIME_EXIT, NEWS_FLATTEN,
+  SESSION_BACKSTOP, PROTECTION_FAILURE, ENTRY_INVALIDATION or MANUAL_SAFETY.
+  OTHER is used only when none of these fits, and UNKNOWN when the leg isn't
+  known.
 
   Every partial exit is kept with its order ID, quantity, price, time, exit
   type, gross realized P&L (points and USD) and the position left
@@ -161,6 +160,7 @@ Quotes and local estimates never trigger or fill anything.
 * PROTECTION_FAILURE_FLATTEN
 * ENTRY_INVALIDATION_FLATTEN
 * MANUAL_SAFETY_FLATTEN
+* NORMAL_TIME_EXIT (the planned 12:00 New York market exit)
 * MIXED_STOP_TARGET_EXIT
 * UNKNOWN_EXIT_STATE
 

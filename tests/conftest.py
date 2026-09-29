@@ -39,8 +39,6 @@ def _fill(node):
 def complete_and_approve(spec: dict) -> dict:
     spec = copy.deepcopy(spec)
     spec = {k: (_fill(v) if k != "approval_record" else v) for k, v in spec.items()}
-    spec["ema"]["included"] = True
-    spec["vwap"]["included"] = True
     spec["specification"]["status"] = STATUS_FROZEN
     spec["approval_record"] = {
         "approved": True,

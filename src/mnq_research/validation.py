@@ -38,6 +38,8 @@ STATUS_FROZEN = "FROZEN_APPROVED"
 ALLOWED_STATUSES = (STATUS_DRAFT, STATUS_FROZEN)
 
 APPROVAL_SECTION = "approval_record"
+STAGE_APPROVAL_SECTION = "stage_approvals"  # Round 15: staged readiness approvals (readiness.py)
+APPROVAL_SECTIONS = frozenset({APPROVAL_SECTION, STAGE_APPROVAL_SECTION})
 
 # Every field that must hold an explicit, approved answer before execution.
 # Keep in sync with configs/rule_freeze_v1.yaml and docs/RULE_FREEZE_GUIDE.md
@@ -100,9 +102,10 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "news_events.open_position_during_event",
     "news_events.calendar_source",
     # Setup and direction
-    "setup.definition",
-    "setup.preconditions",
-    "setup.setup_expiry",
+    "setup.name",
+    "setup.long_definition",
+    "setup.short_definition",
+    "setup.authoritative_sections",
     "direction.long_conditions",
     "direction.short_conditions",
     "direction.conflict_resolution",
@@ -218,12 +221,16 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "protective_orders.cancellation_unknown",
     "protective_orders.position_mismatch",
     # Execution eligibility integration (D-028)
-    "execution_eligibility_integration.status",
+    "execution_eligibility_integration.historical_signal_producers_status",
+    "execution_eligibility_integration.simulated_execution_producers_status",
+    "execution_eligibility_integration.live_producers_status",
+    "execution_eligibility_integration.simulated_producers_required",
     "execution_eligibility_integration.requirement",
     "execution_eligibility_integration.controls",
     # Invalidation, stop, target
     "structural_invalidation.definition",
     "structural_invalidation.action",
+    "structural_invalidation.action_rules",
     "stop_placement.method",
     "stop_placement.buffer_ticks",
     "stop_placement.minimum_stop_points",
@@ -248,6 +255,10 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "position_management.breakeven_rule",
     "position_management.trailing_stop_rule",
     "position_management.time_based_exit",
+    "position_management.normal_flatten_time",
+    "position_management.normal_flatten_timezone",
+    "position_management.normal_time_exit_order_type",
+    "position_management.normal_time_exit_procedure",
     "position_management.risk_per_trade",
     "position_management.position_sizing_balance_basis",
     "position_management.contract_rounding",
@@ -285,11 +296,28 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "commissions.round_turn_per_contract_usd",
     "commissions.includes_exchange_clearing_nfa_fees",
     "commissions.source_and_date",
-    "slippage.entry_ticks",
-    "slippage.stop_exit_ticks",
-    "slippage.target_exit_ticks",
-    "slippage.market_exit_ticks",
-    "slippage.stress_test_multipliers",
+    "commissions.per_side_per_contract_usd",
+    "commissions.source_archive_status",
+    "commissions.stress_multipliers",
+    "slippage.baseline_ticks",
+    "slippage.adverse_direction_rule",
+    "slippage.stress_multipliers",
+    "slippage.actual_fill_rule",
+    # Trade accounting and research pipeline (Round 15)
+    "trade_accounting.gross_pnl",
+    "trade_accounting.net_pnl",
+    "trade_accounting.commission_accounting",
+    "trade_accounting.planned_risk",
+    "trade_accounting.actual_initial_risk",
+    "trade_accounting.result_r",
+    "trade_accounting.excursions",
+    "trade_accounting.record_fields",
+    "trade_accounting.reproducibility_hashes",
+    "research_pipeline.historical_data_ingestion_status",
+    "research_pipeline.historical_calendar_producers_status",
+    "research_pipeline.deterministic_replay_wiring_status",
+    "research_pipeline.execution_simulation_wiring_status",
+    "protective_orders.final_flattening_legs",
     # Prop-account rules
     "prop_account_rules.firm",
     "prop_account_rules.program_name",
@@ -453,7 +481,7 @@ def rule_spec_hash(spec: dict[str, Any]) -> str:
 
     This is the value that must be copied into approval_record.approved_spec_hash.
     """
-    return hash_object({k: v for k, v in spec.items() if k != APPROVAL_SECTION})
+    return hash_object({k: v for k, v in spec.items() if k not in APPROVAL_SECTIONS})
 
 
 def _iter_leaves(node: Any, prefix: str):
@@ -550,11 +578,13 @@ def check_rule_freeze(spec: Any, spec_path: str | Path | None = None) -> RuleFre
         add(problem)
     for problem in _protective_order_problems(spec):
         add(problem)
+    for problem in _cost_problems(spec):
+        add(problem)
 
     # 3. Any other unanswered value anywhere (e.g. nested TBDs, extra fields)
     for path, value in _iter_leaves(spec, ""):
         top = path.split(".", 1)[0].split("[", 1)[0]
-        if top == APPROVAL_SECTION or top in disabled or path in reported:
+        if top in APPROVAL_SECTIONS or top in disabled or path in reported:
             continue
         if is_unresolved(value):
             add(RuleFreezeProblem(path, "UNRESOLVED", f"unanswered (currently {value!r})"))
@@ -868,6 +898,14 @@ def _protective_order_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
         ("position_management.breakeven_rule", "NONE"),
         ("position_management.trailing_stop_rule", "NONE"),
         ("position_management.scaling_in_out", "NONE"),
+        ("protective_orders.final_flattening_legs", [leg.value for leg in pr.FlatteningLeg]),
+        ("structural_invalidation.action", "EXIT_VIA_PROTECTIVE_STOP_MARKET"),
+        ("position_management.normal_time_exit_order_type", "MARKET"),
+        ("position_management.normal_flatten_timezone", "America/New_York"),
+        ("session_flattening.flatten_order_type", "MARKET"),
+        ("daily_limits.max_losing_trades_per_day", "NOT_APPLICABLE_BECAUSE_MAX_FILLED_ENTRIES_IS_ONE"),
+        ("ema.included", False),
+        ("vwap.included", False),
     )
     problems: list[RuleFreezeProblem] = []
     for path, expected in expectations:
@@ -892,4 +930,20 @@ def _protective_order_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
             problems.append(
                 RuleFreezeProblem(f"{base}.protective_order_acknowledgement_timeout_seconds", "INVALID", f"must be a quoted positive number of seconds, got {value!r}")
             )
+    return problems
+
+
+def _cost_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
+    """Round 15: the cost model must be internally consistent and complete (costs.CostModel enforces the same)."""
+    from mnq_research.costs import CostModel
+
+    problems: list[RuleFreezeProblem] = []
+    for section in ("commissions", "slippage"):
+        body = spec.get(section)
+        if not isinstance(body, dict) or any(is_unresolved(v) for k, v in body.items() if k != "source_archive_status"):
+            return problems  # reported as missing/unresolved elsewhere
+    try:
+        CostModel.from_spec(spec)
+    except (ValueError, KeyError, TypeError, ArithmeticError) as exc:
+        problems.append(RuleFreezeProblem("commissions/slippage", "INVALID", str(exc)))
     return problems

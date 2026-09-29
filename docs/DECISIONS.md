@@ -830,4 +830,85 @@ excess fill). Tests were added, and all are now caught.
    News and manual flattens count as OTHER.
 2. **`scaling_in_out: NONE`**, filled from decision 6.
 **Reversible:** yes.
-**Status:** D-031 CONFIRMED. Items 1–2 PENDING.
+**Status:** D-031 CONFIRMED. Item 1 was replaced by specific final-leg
+labels, and item 2 was confirmed (Round 15, D-033).
+
+## D-033 — Round 15: staged readiness, exit completion, costs and trade accounting
+**Decision (rule owner, 2026-09-29):**
+- **Confirmations:**
+  - `scaling_in_out: NONE`.
+  - `final_flattening_leg` uses the most specific label: STOP, TARGET,
+    NORMAL_TIME_EXIT, NEWS_FLATTEN, SESSION_BACKSTOP, PROTECTION_FAILURE,
+    ENTRY_INVALIDATION, MANUAL_SAFETY; OTHER only when nothing fits; or
+    UNKNOWN.
+- **15A:** five staged gates (SIGNAL_REPLAY → ONE_CONTRACT_BACKTEST →
+  PROP_MONTE_CARLO → PAPER_FORWARD → LIVE_CONSIDERATION).
+  - `setup.*` holds summary pointers to the frozen sequence.
+  - EMA and VWAP are `included: false` and are never computed.
+- **15B:**
+  - The normal exit is a MARKET order at 12:00:00 New York (a candidate
+    value, not optimised), with no duplicate flatten.
+  - `structural_invalidation.action: EXIT_VIA_PROTECTIVE_STOP_MARKET`.
+  - `max_losing_trades_per_day: NOT_APPLICABLE_BECAUSE_MAX_FILLED_ENTRIES_IS_ONE`.
+- **15C:** commission is $1.82 per round trip, $0.91 per contract side;
+  stress levels 1.00 / 1.25 / 1.50.
+- **15D:** adverse slippage ticks per order purpose; stress 1× / 2× / 3×;
+  never applied twice.
+- **15E:** same-minute entry and exit → stop first; no target from
+  unresolved ordering; pre-entry events are ignored.
+- **15F:** missing/bad data when flat → the interval is ineligible and a
+  fresh setup is needed, or the whole date is ineligible. During a trade →
+  `OPEN_POSITION_DATA_GAP_UNRESOLVED`, unscorable, with a labelled
+  full-loss stress.
+- **15G:** P&L, net, planned vs actual R, MAE/MFE and the trade record.
+
+**Implementation:**
+- **New modules:**
+  - `readiness.py`: `STAGE_PREFIXES`, stage hashes, `check_stage`,
+    `broker_connectivity_permitted`, and the `mnq rules stage` command;
+  - `costs.py`: `CostModel`;
+  - `accounting.py`: `account_trade`, `account_all_scenarios`, `summarize`;
+  - `data_quality.py`: interval, date and open-position classification.
+- **`protection.py`:**
+  - `ExitOutcome.NORMAL_TIME_EXIT`;
+  - `apply_normal_time_exit`;
+  - no duplicate flattens;
+  - the specific `FlatteningLeg` values;
+  - `resolve_entry_minute`.
+- **Spec:**
+  - `research_pipeline.*` status markers;
+  - `execution_eligibility_integration` split into historical, simulated
+    and live producers;
+  - `stage_approvals`, which is excluded from all hashes.
+- **Tests:** 28 Round 15 tests, 304 in total. Of 33 mutation checks, 1
+  survived at first (commission sides on a gap trade); a test was added,
+  and all are now caught.
+
+**Pending owner confirmation:**
+1. `missing_data.max_tolerated_gap_minutes: 0`. Inferred from "unexplained
+   missing required data → ineligible"; verified no-trade minutes are not
+   gaps.
+2. `setup.definition`, `setup.preconditions` and `setup.setup_expiry` were
+   replaced by `setup.name`, `long_definition`, `short_definition` and
+   `authoritative_sections`. Expiry lives in the confirmation clock and the
+   acceptance lifetime.
+3. The estimated round-trip commission inside actual initial risk is
+   multiplied by the commission scenario, for consistency with net P&L.
+4. A gap trade's commission record charges only the entered side, since no
+   exit fill exists. The gap stress uses the full round trip.
+5. Excursion measurement ignores observations that start before the fill.
+   With only one-minute bars, the whole entry minute is therefore excluded.
+   Should it instead be included and flagged approximate?
+6. `no_trade_conditions.execution_safety_conditions` was filled from your
+   list of simulated producers.
+7. **Stage assignments:**
+   - `news_events` (except open positions) → SIGNAL_REPLAY;
+   - `daily_limits` and `reentry` → ONE_CONTRACT_BACKTEST;
+   - `daily_loss_stop_usd` and the sizing fields → PROP_MONTE_CARLO.
+
+   The full map is `readiness.STAGE_PREFIXES`.
+8. The $1.82 figure is as you supplied it; I have not verified it
+   independently. It must be archived before the ONE_CONTRACT_BACKTEST
+   approval.
+**Reversible:** yes.
+**Status:** Round 15 rules CONFIRMED by the owner. Items 1–8 PENDING.

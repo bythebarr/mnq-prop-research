@@ -62,6 +62,15 @@ def cmd_rules_check(args: argparse.Namespace, root: Path) -> int:
     return OK
 
 
+def cmd_rules_stage(args: argparse.Namespace, root: Path) -> int:
+    from mnq_research.config import load_mapping
+    from mnq_research.readiness import Stage, check_stage
+
+    report = check_stage(load_mapping(_resolve(args.spec, root)), Stage(args.stage))
+    print(report.format())
+    return OK if report.is_ready else FOUND_PROBLEMS
+
+
 def cmd_data_synth(args: argparse.Namespace, root: Path) -> int:
     spec = SyntheticSpec(first_trading_date=args.start, n_trading_days=args.days, seed=args.seed)
     df = generate_synthetic_bars(spec)
@@ -144,6 +153,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = rules.add_parser("check", help="check whether the rule freeze is complete and approved")
     p.add_argument("--spec", default=str(DEFAULT_RULE_FREEZE_PATH))
     p.set_defaults(func=cmd_rules_check)
+    p = rules.add_parser("stage", help="check one staged readiness gate (SIGNAL_REPLAY, ONE_CONTRACT_BACKTEST, ...)")
+    p.add_argument("stage", choices=["SIGNAL_REPLAY", "ONE_CONTRACT_BACKTEST", "PROP_MONTE_CARLO", "PAPER_FORWARD", "LIVE_CONSIDERATION"])
+    p.add_argument("--spec", default=str(DEFAULT_RULE_FREEZE_PATH))
+    p.set_defaults(func=cmd_rules_stage)
 
     data = sub.add_parser("data", help="bar data").add_subparsers(dest="action", required=True)
     p = data.add_parser("synth", help="generate SYNTHETIC FAKE bars for software tests")

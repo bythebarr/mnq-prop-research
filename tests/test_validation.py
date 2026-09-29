@@ -26,8 +26,10 @@ def test_draft_rule_freeze_cannot_execute(draft_spec):
 def test_all_unresolved_fields_are_reported_together(draft_spec):
     report = check_rule_freeze(draft_spec)
     unresolved = set(report.unresolved_paths())
+    disabled = {section for section in ("ema", "vwap") if draft_spec[section]["included"] is False}
     expected_unanswered = {
-        path for path in REQUIRED_FIELDS if get_path(draft_spec, path) in (None, "TBD")
+        path for path in REQUIRED_FIELDS
+        if get_path(draft_spec, path) in (None, "TBD") and path.split(".")[0] not in disabled
     }
     # Every unanswered required field is reported - not just the first one.
     assert expected_unanswered <= unresolved

@@ -1,5 +1,16 @@
 # Critical Path to Frozen Baseline Test 001
 
+> **Update after Round 15:**
+> * The staged gate exists (`docs/READINESS_GATES.md`).
+> * Every rule question in groups 1 and 2 is answered.
+> * SIGNAL_REPLAY is now blocked only by the unbuilt pipeline (data
+>   ingestion, historical calendars, historical eligibility producers, replay
+>   wiring) and by its own approval.
+> * ONE_CONTRACT_BACKTEST additionally needs the archived commission source,
+>   the simulated execution producers and the execution-simulation wiring.
+>
+> The tables below are the Round 14 snapshot.
+
 Recorded after D-031 (2026-09-29). This lists every item still unresolved in
 `configs/rule_freeze_v1.yaml` (`uv run mnq rules check`), plus the
 non-spec work, grouped by the **first milestone that needs it**. Nothing

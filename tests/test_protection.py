@@ -501,7 +501,7 @@ def test_p28_no_live_or_paper_execution_is_enabled():
             imported |= {a.name.split(".")[0] for a in node.names}
         elif isinstance(node, ast.ImportFrom):
             imported.add((node.module or "").split(".")[0])
-    assert imported <= {"__future__", "dataclasses", "decimal", "enum", "fractions", "typing", "pandas", "mnq_research"}
+    assert imported <= {"__future__", "datetime", "dataclasses", "decimal", "enum", "fractions", "typing", "pandas", "mnq_research"}
 
 
 def test_p29_deployment_stays_blocked_pending_capability_verification():
@@ -640,7 +640,7 @@ def test_d031_01_mixed_exits_are_named_mixed_and_every_leg_is_preserved():
     e.on_exit_fill(FILL + 700 * MS, E.FLATTEN, 1, D("20008.00"), AUTH)
     e.on_position_report(FILL + 800 * MS, 0, None, "MNQM4", ACCOUNT)
     e.on_cancel_confirmed(FILL + 900 * MS, K.STOP)
-    assert e.exit_outcome is X.PROTECTION_FAILURE_FLATTEN and e.final_flattening_leg.value == "EMERGENCY"
+    assert e.exit_outcome is X.PROTECTION_FAILURE_FLATTEN and e.final_flattening_leg.value == "PROTECTION_FAILURE"
 
 
 def test_d031_02_a_late_fill_after_close_is_unknown_and_logged_separately():

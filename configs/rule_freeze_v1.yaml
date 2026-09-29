@@ -518,9 +518,22 @@ news_events:
 
 # --- Setup definition -----------------------------------------------------------------------------
 setup:
-  definition: TBD
-  preconditions: TBD
-  setup_expiry: TBD
+  # Round 15 (rule owner, 2026-09-29): summary pointers only. The authoritative
+  # rules and parameters live in the sections listed below; never duplicated here.
+  name: MNQ_OBJECTIVE_STRUCTURE_CONTINUATION_B0
+  long_definition: >
+    A directionally armed structural-zone interaction produces ACCEPTED_ABOVE,
+    followed by a valid long pullback-hold and continuation confirmation,
+    sufficient room to the nearest opposing structural zone, deterministic
+    candidate selection, and typed CLEAR eligibility at the applicable
+    decision and submission times.
+  short_definition: >
+    A directionally armed structural-zone interaction produces ACCEPTED_BELOW,
+    followed by a valid short pullback-hold and continuation confirmation,
+    sufficient room to the nearest opposing structural zone, deterministic
+    candidate selection, and typed CLEAR eligibility at the applicable
+    decision and submission times.
+  authoritative_sections: [structural_levels, level_states, acceptance_rejection_breakout, confirmation, direction, room_to_target, trade_geometry, execution_eligibility_integration, entry_trigger, entry_order_lifecycle]
 
 # --- Direction rules ----------------------------------------------------------------------------------
 direction:
@@ -1098,7 +1111,7 @@ confirmation:
 # --- EMA (only if later approved) ----------------------------------------------------------------------------
 # If `included` is false, the other EMA fields are not required.
 ema:
-  included: TBD
+  included: false   # Round 15: no EMA value may affect eligibility, direction, confirmation, entry, stop, target or management
   period: TBD
   price_source: TBD
   bar_interval: TBD
@@ -1110,7 +1123,7 @@ ema:
 # --- VWAP (only if later approved) --------------------------------------------------------------------------
 # If `included` is false, the other VWAP fields are not required.
 vwap:
-  included: TBD
+  included: false   # Round 15: no VWAP value may affect eligibility, direction, confirmation, entry, stop, target or management
   anchor: TBD
   price_source: TBD
   volume_source: TBD
@@ -1391,7 +1404,8 @@ protective_orders:
     authoritatively resolved where operationally safe, reconcile fills and
     orders, confirm zero position and that no sibling can reopen exposure.
     Live sequencing must be proven by adapter fault-injection tests.
-  exit_outcomes: [TARGET_FILLED, STOP_FILLED, SCHEDULED_NEWS_FLATTEN, SESSION_EMERGENCY_FLATTEN, PROTECTION_FAILURE_FLATTEN, ENTRY_INVALIDATION_FLATTEN, MANUAL_SAFETY_FLATTEN, MIXED_STOP_TARGET_EXIT, UNKNOWN_EXIT_STATE]
+  exit_outcomes: [TARGET_FILLED, STOP_FILLED, SCHEDULED_NEWS_FLATTEN, SESSION_EMERGENCY_FLATTEN, PROTECTION_FAILURE_FLATTEN, ENTRY_INVALIDATION_FLATTEN, MANUAL_SAFETY_FLATTEN, NORMAL_TIME_EXIT, MIXED_STOP_TARGET_EXIT, UNKNOWN_EXIT_STATE]
+  final_flattening_legs: [STOP, TARGET, NORMAL_TIME_EXIT, NEWS_FLATTEN, SESSION_BACKSTOP, PROTECTION_FAILURE, ENTRY_INVALIDATION, MANUAL_SAFETY, OTHER, UNKNOWN]
   exit_record: >
     Every terminal record keeps actual prices, quantities, timestamps, costs
     when available, and the exit reason. D-031: every partial exit keeps its
@@ -1401,9 +1415,11 @@ protective_orders:
   mixed_exits: >
     If both the stop and the target fill portions of one position, the
     outcome is MIXED_STOP_TARGET_EXIT, never named only after the final fill.
-    Also record final_flattening_leg: STOP, TARGET, EMERGENCY (session
-    backstop, protection-failure or entry-invalidation flatten) or OTHER
-    (news or manual flatten).
+    Also record final_flattening_leg, using the most specific known value
+    (Round 15): STOP, TARGET, NORMAL_TIME_EXIT, NEWS_FLATTEN,
+    SESSION_BACKSTOP, PROTECTION_FAILURE, ENTRY_INVALIDATION, MANUAL_SAFETY,
+    OTHER (only when no defined category fits) or UNKNOWN. Safety exits keep
+    distinct labels. The complete exit-event history is always preserved.
   late_fill_after_close: >
     A sibling fill after authoritative flat confirmation changes the current
     classification to UNKNOWN_EXIT_STATE; the original close event stays
@@ -1437,7 +1453,12 @@ structural_invalidation:
   definition: >
     Round 12: one tick beyond the far side of the complete originating zone:
     long L - 0.25, short U + 0.25 (structural_invalidation_buffer_ticks: 1).
-  action: TBD   # what happens on invalidation belongs to the trade-management round
+  action: EXIT_VIA_PROTECTIVE_STOP_MARKET
+  action_rules: >
+    Round 15: when the stop trigger condition occurs, the existing stop-market
+    lifecycle acts immediately (no waiting for a five-minute close); the stop
+    is never widened or moved; no re-entry; the target is cancelled or reduced
+    through the OCO process; STOP_FILLED when resolved normally.
 
 # --- Stop placement ----------------------------------------------------------------------------------------------------
 stop_placement:
@@ -1536,7 +1557,13 @@ trade_geometry:
 # --- Execution eligibility integration (added D-028) ----------------------------------------------------------
 # Interface: src/mnq_research/eligibility.py (ExecutionEligibility, ControlState).
 execution_eligibility_integration:
-  status: REQUIRED_BEFORE_EXECUTABLE   # blocks execution until the producers below are integrated and verified
+  # Round 15: split by readiness stage. Historical (simulated) producers are
+  # enough for research replay; live producers only for PAPER_FORWARD.
+  historical_signal_producers_status: REQUIRED_BEFORE_EXECUTABLE   # SIGNAL_REPLAY: session, news, data validity, calendar availability, directional conflict, candidate validity
+  simulated_execution_producers_status: REQUIRED_BEFORE_EXECUTABLE   # ONE_CONTRACT_BACKTEST: position state, filled-entry allowance, structural-stop validity, protection lifecycle, entry/exit cutoff
+  live_producers_status: REQUIRED_BEFORE_EXECUTABLE   # PAPER_FORWARD only
+  simulated_producers_required: [session_eligibility, news_eligibility, data_validity, position_state, daily_filled_entry_allowance, directional_conflict_halt, structural_stop_validity, candidate_validity, protection_lifecycle, entry_exit_cutoff, calendar_availability]
+  unknown_state_rule: Any UNKNOWN blocks the simulated action. No live producer is required for historical replay.
   requirement: >
     News, safety, session, missing-data, directional-conflict, daily-halt,
     candidate, position, working-order, contract and zone controls must each
@@ -1554,7 +1581,20 @@ position_management:
   scaling_in_out: NONE   # D-031: no scale-in, scale-out or profit lock; later only as a registered change
   breakeven_rule: NONE   # Round 14: never moved to breakeven
   trailing_stop_rule: NONE   # Round 14: never trailed, widened, tightened or recalculated
-  time_based_exit: TBD
+  time_based_exit: NORMAL_TIME_EXIT at normal_flatten_time (see below)
+  # Round 15 (rule owner, 2026-09-29): candidate B0 parameter, not optimised.
+  normal_flatten_time: "12:00:00"
+  normal_flatten_timezone: America/New_York
+  normal_time_exit_order_type: MARKET
+  normal_time_exit_procedure: >
+    At 12:00:00 New York: submit no new entry; cancel the profit target;
+    begin a normal market exit for any confirmed remaining position; keep
+    protective-stop coverage until closure is authoritatively resolved where
+    operationally safe; reconcile position and protective orders; confirm flat
+    quantity and cancelled remaining orders. Exit reason NORMAL_TIME_EXIT. If
+    a news flatten, stop, target or safety exit happened earlier, no further
+    normal flatten is submitted. 15:55 remains the emergency session
+    backstop, not the planned exit.
   # Round 13 (rule owner, 2026-09-29): deliberately unresolved until evidence exists.
   risk_per_trade:
     status: UNRESOLVED_EVIDENCE_DERIVED
@@ -1571,6 +1611,43 @@ position_management:
   below_one_contract_action: SKIP_TRADE   # records POSITION_SIZE_BELOW_ONE_CONTRACT
   sizing_never: [round up, force one contract, compress the stop, increase the allowed risk, carry fractional contracts]
   max_contracts_per_trade: TBD
+
+# --- Trade accounting (added Round 15) ------------------------------------------------------------------------
+# Implemented in src/mnq_research/accounting.py and costs.py; plain English in docs/TRADE_ACCOUNTING.md.
+trade_accounting:
+  gross_pnl: >
+    Per fill leg. Long: (exit - entry) x 2.00 USD x quantity. Short:
+    (entry - exit) x 2.00 USD x quantity. Exact fill-level accounting.
+  net_pnl: >
+    net_pnl_usd = gross_pnl_usd - total_commissions_usd - separately itemized
+    costs. Modelled slippage is already inside modelled fill prices and is
+    never subtracted again.
+  commission_accounting: 0.91 USD per contract side (every entered and every exited contract), times the commission scenario multiplier.
+  planned_risk: planned_risk_points and planned_risk_usd_before_costs = planned_risk_points x 2.00 x intended quantity; never mixed with actual R.
+  actual_initial_risk: >
+    actual_price_risk_usd = |actual average entry - structural stop| x 2.00 x
+    confirmed quantity; modeled_stop_slippage_risk_usd = protective-stop
+    slippage points x 2.00 x confirmed quantity; estimated_round_trip_commission_usd
+    = 1.82 x confirmed quantity (x commission scenario); actual_initial_risk_usd
+    = the sum of the three and must be > 0.
+  result_r: result_r_net = net_pnl_usd / actual_initial_risk_usd; result_r_price_only = gross_pnl_usd / actual_price_risk_usd.
+  excursions: >
+    From the first authoritative entry fill to authoritative flat. Long: MFE =
+    max valid traded price - actual average entry; MAE = actual average entry
+    - min valid traded price (short mirrors). Never clamped to stop or target.
+    Also MFE/MAE in price-only R, time to MFE, time to MAE, time in trade.
+    Observations before the first fill are excluded; bar-based excursion
+    timing is marked approximate.
+  record_fields: [trading_date, contract, direction, identifiers, entry_legs, exit_legs, actual_average_entry, actual_average_exit, stop, target, gross_points, gross_pnl_usd, commissions_usd, net_pnl_usd, planned_risk_points, planned_risk_usd_before_costs, actual_initial_risk_usd, result_r_price_only, result_r_net, mfe_points, mae_points, mfe_r, mae_r, time_to_mfe, time_to_mae, time_in_trade, exit_reason, final_flattening_leg, slippage_scenario, commission_scenario, data_quality_flags, scorable, hashes]
+  reproducibility_hashes: [specification_hash, code_hash, data_hash, calendar_hash]
+
+# --- Research pipeline readiness (added Round 15) -------------------------------------------------------------
+# Implementation facts, not rules. Each stays a blocker until built and verified.
+research_pipeline:
+  historical_data_ingestion_status: REQUIRED_BEFORE_EXECUTABLE   # SIGNAL_REPLAY
+  historical_calendar_producers_status: REQUIRED_BEFORE_EXECUTABLE   # SIGNAL_REPLAY
+  deterministic_replay_wiring_status: REQUIRED_BEFORE_EXECUTABLE   # SIGNAL_REPLAY
+  execution_simulation_wiring_status: REQUIRED_BEFORE_EXECUTABLE   # ONE_CONTRACT_BACKTEST
 
 # --- Maximum trades per day -------------------------------------------------------------------------------------------------
 daily_limits:
@@ -1592,12 +1669,18 @@ daily_limits:
     NOT_SUBMITTED, an explicitly rejected entry with zero fill and a
     cancelled entry with zero fill do not consume the allowance. Any positive
     authoritative fill consumes it permanently for the trading date.
-  max_losing_trades_per_day: TBD
+  max_losing_trades_per_day: NOT_APPLICABLE_BECAUSE_MAX_FILLED_ENTRIES_IS_ONE
   daily_loss_stop_usd: TBD
 
 # --- No-trade conditions (added Round 2) -------------------------------------------------------------------
 no_trade_conditions:
-  execution_safety_conditions: TBD
+  execution_safety_conditions: >
+    Round 15: the typed producers listed in
+    execution_eligibility_integration.simulated_producers_required (session,
+    news, data validity, position state, daily filled-entry allowance,
+    directional-conflict halt, structural-stop validity, candidate validity,
+    protection lifecycle, entry/exit cutoff, calendar availability). Any
+    UNKNOWN blocks the simulated action.
   risk_constraint_conditions: TBD
 
 # --- Re-entry policy ------------------------------------------------------------------------------------------------------------
@@ -1610,8 +1693,8 @@ reentry:
 # --- Session flattening ---------------------------------------------------------------------------------------------------------
 session_flattening:
   no_new_entries_after: "11:30:00 America/New_York (see sessions.trading_window_end cutoff_semantics)"
-  flatten_all_by: TBD
-  flatten_order_type: TBD
+  flatten_all_by: "12:00:00 America/New_York (position_management.normal_flatten_time; 15:55 remains the emergency backstop)"
+  flatten_order_type: MARKET
   emergency_flatten:   # Round 5: account-safety backstop, NOT a profit-management target
     time: "15:55:00"
     timezone: America/New_York
@@ -1671,7 +1754,15 @@ intrabar_ambiguity:
     Both reachable within one minute and no finer chronology -> assume the
     stop first, fill with the conservative stop-fill model, mark
     SAME_BAR_STOP_TARGET_AMBIGUITY and CONSERVATIVE_STOP_FIRST.
-  entry_and_exit_same_bar: TBD
+  entry_and_exit_same_bar: >
+    Round 15: only market events at or after the authoritative entry-fill
+    timestamp may trigger the stop or target. Finer chronological data are
+    used when they establish order (source reference kept). With one-minute
+    data only: apply the conservative modelled entry fill; if the stop is
+    reachable after an unresolved entry sequence assume stop first; never
+    award a target from unresolved ordering; mark
+    SAME_MINUTE_ENTRY_EXIT_AMBIGUITY and CONSERVATIVE_STOP_FIRST. A modelled
+    entry at or beyond invalidation uses the entry-invalidation flatten.
   resolution_with_finer_data: >
     One-second or trade data that establish the order are used
     chronologically, keeping the higher-resolution source reference. If the
@@ -1692,28 +1783,73 @@ intrabar_ambiguity:
 
 # --- Missing-data behaviour ------------------------------------------------------------------------------------------------------
 missing_data:
-  policy: TBD
-  max_tolerated_gap_minutes: TBD
-  open_position_during_gap: TBD
+  # Round 15 (rule owner, 2026-09-29).
+  policy: >
+    When flat: verified Databento no-trade omissions follow the aggregation
+    rules. A known acquisition outage or unexplained missing required data ->
+    no signal, reset the affected setup state, the affected decision interval
+    is ineligible, and a completely fresh setup is required after validity
+    resumes. If required daily levels or calendars cannot be built reliably,
+    the entire trading date is ineligible.
+  max_tolerated_gap_minutes: 0   # unexplained or outage minutes tolerated: none (verified no-trade minutes are not gaps)
+  open_position_during_gap: >
+    OPEN_POSITION_DATA_GAP_UNRESOLVED: never invent an exit or award a target;
+    never silently drop the trade; exclude it from primary win/loss
+    statistics; keep entry, stop, target and the last valid observation;
+    mark the trade unscorable and report it in data-quality statistics;
+    block promotion if unresolved open-position gaps are material. A separate,
+    labelled account-survival stress scenario assigns each such trade a full
+    -1R loss plus stop costs and slippage; never substituted into the primary
+    baseline.
 
 # --- Bad-data behaviour ------------------------------------------------------------------------------------------------------------
 bad_data:
-  policy: TBD
-  handling_of_rejected_bars: TBD
+  # Round 15 (rule owner, 2026-09-29).
+  policy: >
+    Impossible OHLC, off-tick prices, wrong contract, conflicting duplicate
+    authoritative timestamps, time-zone ambiguity or invalid session mapping
+    fail the affected interval closed. Prices are never repaired silently.
+  handling_of_rejected_bars: >
+    Treated as missing required data: the interval is ineligible; if the bar
+    is needed for a structural level, the date is ineligible; during an open
+    trade -> OPEN_POSITION_DATA_GAP_UNRESOLVED.
 
 # --- Commission assumptions ----------------------------------------------------------------------------------------------------------
 commissions:
-  round_turn_per_contract_usd: TBD
-  includes_exchange_clearing_nfa_fees: TBD
-  source_and_date: TBD
+  # Round 15 (rule owner, 2026-09-29): a versioned EXTERNAL assumption; it may change.
+  round_turn_per_contract_usd: "1.82"
+  per_side_per_contract_usd: "0.91"   # charged for every entered and every exited contract side
+  includes_exchange_clearing_nfa_fees: true
+  source_and_date: >
+    Tradeify Help Center, "Trading Commission Fees", MNQ Micro E-Mini NASDAQ,
+    Total Round Trip Cost $1.82 per contract (stated to include exchange,
+    NFA, clearing and commission charges), as supplied by the rule owner;
+    retrieval date 2026-09-29. Not independently verified in this repository.
+  source_archive_status: REQUIRED_BEFORE_EXECUTABLE   # archive URL, retrieval timestamp and content hash before ONE_CONTRACT_BACKTEST approval
+  stress_multipliers: {BASE: "1.00", COMMISSION_STRESS_125: "1.25", COMMISSION_STRESS_150: "1.50"}
 
 # --- Slippage assumptions -------------------------------------------------------------------------------------------------------------
 slippage:
-  entry_ticks: TBD
-  stop_exit_ticks: TBD
-  target_exit_ticks: TBD
-  market_exit_ticks: TBD
-  stress_test_multipliers: TBD
+  # Round 15 (rule owner, 2026-09-29): candidate baseline assumptions per contract,
+  # not claims about future execution. Applied after the first otherwise eligible
+  # execution price is determined.
+  baseline_ticks:
+    entry_market: 1
+    protective_stop_market: 2
+    normal_time_exit_market: 2
+    news_flatten_market: 2
+    session_backstop_market: 3
+    protection_failure_market: 3
+    entry_invalidation_market: 3
+    manual_safety_market: 3
+    target_limit: 0   # subject to the one-tick trade-through fill rule
+  adverse_direction_rule: Buys fill higher, sells fill lower by the modelled ticks.
+  stress_multipliers: {BASE_SLIPPAGE: 1, DOUBLE_SLIPPAGE: 2, TRIPLE_SLIPPAGE: 3}
+  actual_fill_rule: >
+    Never applied twice: modelled historical fills receive modelled slippage;
+    authoritative actual fills keep their actual prices, with realized
+    slippage measured separately. Stress multipliers change fill prices and
+    P&L only, never signals.
 
 # --- Prop-account rule version ----------------------------------------------------------------------------------------------------------
 prop_account_rules:
@@ -1766,3 +1902,15 @@ approval_record:
   approved_at_utc: null
   approved_spec_hash: null
   approval_notes: null
+
+# --- Staged readiness approvals (added Round 15) -------------------------------------------------------------
+# One approval per research milestone (src/mnq_research/readiness.py). Each records
+# the STAGE hash printed by `uv run mnq rules stage <STAGE>`, which covers only the
+# fields needed by that stage and all earlier stages. Answering a later-stage field
+# never invalidates an earlier approval; editing an earlier-stage field does.
+# No staged approval permits broker connectivity (that needs PAPER_FORWARD in full).
+stage_approvals:
+  SIGNAL_REPLAY: {approved: false, approved_by: null, approved_at_utc: null, approved_stage_hash: null}
+  ONE_CONTRACT_BACKTEST: {approved: false, approved_by: null, approved_at_utc: null, approved_stage_hash: null}
+  PROP_MONTE_CARLO: {approved: false, approved_by: null, approved_at_utc: null, approved_stage_hash: null}
+  PAPER_FORWARD: {approved: false, approved_by: null, approved_at_utc: null, approved_stage_hash: null}
