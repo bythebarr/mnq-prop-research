@@ -39,6 +39,10 @@ from mnq_research.protection import OrderAction, PriceInterval, PriceSource
 
 OPEN_POSITION_DATA_GAP = "OPEN_POSITION_DATA_GAP_UNRESOLVED"
 GAP_STRESS_LABEL = "GAP_STRESS_FULL_LOSS_ASSUMPTION_NOT_PRIMARY"
+ENTRY_MINUTE_FLAG = "ENTRY_MINUTE_EXCURSION_APPROXIMATION"
+MAE_ENTRY_MINUTE_POLICY = "INCLUDE_FULL_MINUTE_CONSERVATIVE"
+MFE_ENTRY_MINUTE_POLICY = "EXCLUDE_FULL_MINUTE_PRIMARY"
+BASE_SCENARIO = ("BASE_SLIPPAGE", "BASE")
 REQUIRED_HASHES = ("specification_hash", "code_hash", "data_hash", "calendar_hash")
 
 
@@ -141,20 +145,30 @@ def account_trade(inputs: TradeInputs, costs: CostModel, slippage_scenario: str,
 
     # Excursions: authoritative observations from the first fill to flat (never clamped to stop/target).
     end = inputs.flat_utc if inputs.flat_utc is not None else max((leg.timestamp_utc for leg in inputs.exit_legs), default=None)
-    obs = sorted(
-        (o for o in inputs.observations
-         if o.source is PriceSource.AUTHORITATIVE_TRADES and o.start_utc >= first_fill and (end is None or o.start_utc <= end)),
-        key=lambda o: o.start_utc,
-    )
+    usable = [o for o in inputs.observations if o.source is PriceSource.AUTHORITATIVE_TRADES and (end is None or o.start_utc <= end)]
+    entry_bar = next((o for o in usable if o.end_utc is not None and o.start_utc < first_fill < o.end_utc), None)
+    after = sorted((o for o in usable if o.start_utc >= first_fill), key=lambda o: o.start_utc)
+    finer_around_fill = entry_bar is not None and any(o.start_utc < entry_bar.end_utc and o.end_utc is None for o in after)
     flags = list(inputs.data_quality_flags)
-    mfe = mae = t_mfe = t_mae = None
-    if obs:
-        best = max(obs, key=lambda o: o.high) if long else min(obs, key=lambda o: o.low)
-        worst = min(obs, key=lambda o: o.low) if long else max(obs, key=lambda o: o.high)
-        mfe = sign * (Fraction(best.high if long else best.low) - avg_entry)
+    mfe = mae = t_mfe = t_mae = mfe_optimistic = None
+    if entry_bar is not None and finer_around_fill:
+        entry_bar = None  # authoritative finer data establish the order: measure from the fill itself
+    fav = (lambda o: Fraction(o.high)) if long else (lambda o: -Fraction(o.low))  # larger = more favourable
+    adv = (lambda o: -Fraction(o.low)) if long else (lambda o: Fraction(o.high))  # larger = more adverse
+    if after or entry_bar is not None:
+        if after:
+            best = max(after, key=fav)
+            mfe = sign * (Fraction(best.high if long else best.low) - avg_entry)
+            t_mfe = best.start_utc - first_fill
+        conservative = after + ([entry_bar] if entry_bar is not None else [])
+        worst = max(conservative, key=adv)
         mae = sign * (avg_entry - Fraction(worst.low if long else worst.high))
-        t_mfe, t_mae = best.start_utc - first_fill, worst.start_utc - first_fill
-        if any(o.high != o.low for o in obs):
+        t_mae = max(worst.start_utc, first_fill) - first_fill
+        if entry_bar is not None:
+            flags.append(ENTRY_MINUTE_FLAG)
+            optimistic = max(after + [entry_bar], key=fav)
+            mfe_optimistic = sign * (Fraction(optimistic.high if long else optimistic.low) - avg_entry)
+        if any(o.high != o.low for o in after):
             flags.append("EXCURSION_TIMING_APPROXIMATE")
     else:
         flags.append("NO_EXCURSION_OBSERVATIONS")
@@ -190,6 +204,9 @@ def account_trade(inputs: TradeInputs, costs: CostModel, slippage_scenario: str,
         "result_r_net": None if net_usd is None else str(net_usd / actual_initial_risk_usd),
         "mfe_points": None if mfe is None else str(mfe),
         "mae_points": None if mae is None else str(mae),
+        "mfe_optimistic_bound_points": None if mfe_optimistic is None else str(mfe_optimistic),
+        "mae_entry_minute_policy": MAE_ENTRY_MINUTE_POLICY,
+        "mfe_entry_minute_policy": MFE_ENTRY_MINUTE_POLICY,
         "mfe_r": r(mfe),
         "mae_r": r(mae),
         "time_to_mfe": None if t_mfe is None else str(t_mfe),
@@ -199,8 +216,11 @@ def account_trade(inputs: TradeInputs, costs: CostModel, slippage_scenario: str,
         "final_flattening_leg": inputs.final_flattening_leg,
         "slippage_scenario": slippage_scenario,
         "commission_scenario": commission_scenario,
+        "result_basis": "BASE_ASSUMPTIONS" if (slippage_scenario, commission_scenario) == BASE_SCENARIO else "HYPOTHETICAL_STRESS",
         "data_quality_flags": flags,
         "scorable": scorable,
+        "gap_stress_exit_price": None if scorable else str(stop - sign * Fraction(costs.slippage_points(OrderPurpose.PROTECTIVE_STOP_MARKET, slippage_scenario))),
+        "gap_stress_commissions_usd": None if scorable else str(est_rt_commission),
         "gap_stress_net_pnl_usd": None if scorable else str(-actual_initial_risk_usd),
         "gap_stress_label": None if scorable else GAP_STRESS_LABEL,
         "hashes": dict(inputs.hashes),

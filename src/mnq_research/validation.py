@@ -313,6 +313,19 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "trade_accounting.excursions",
     "trade_accounting.record_fields",
     "trade_accounting.reproducibility_hashes",
+    "trade_accounting.mae_entry_minute_policy",
+    "trade_accounting.mfe_entry_minute_policy",
+    "trade_accounting.mfe_optimistic_bound_available",
+    "trade_accounting.entry_minute_rule",
+    "trade_accounting.scenario_results",
+    "trade_accounting.gap_trade_costs",
+    "missing_data.verified_no_trade_minutes",
+    "commissions.source_url",
+    "commissions.source_change_rule",
+    "data_acquisition.dataset",
+    "data_acquisition.symbol_type",
+    "data_acquisition.symbol_resolution",
+    "data_acquisition.time_range",
     "research_pipeline.historical_data_ingestion_status",
     "research_pipeline.historical_calendar_producers_status",
     "research_pipeline.deterministic_replay_wiring_status",
@@ -579,6 +592,8 @@ def check_rule_freeze(spec: Any, spec_path: str | Path | None = None) -> RuleFre
     for problem in _protective_order_problems(spec):
         add(problem)
     for problem in _cost_problems(spec):
+        add(problem)
+    for problem in _retired_field_problems(spec):
         add(problem)
 
     # 3. Any other unanswered value anywhere (e.g. nested TBDs, extra fields)
@@ -905,6 +920,11 @@ def _protective_order_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
         ("session_flattening.flatten_order_type", "MARKET"),
         ("daily_limits.max_losing_trades_per_day", "NOT_APPLICABLE_BECAUSE_MAX_FILLED_ENTRIES_IS_ONE"),
         ("ema.included", False),
+        ("trade_accounting.mae_entry_minute_policy", "INCLUDE_FULL_MINUTE_CONSERVATIVE"),
+        ("trade_accounting.mfe_entry_minute_policy", "EXCLUDE_FULL_MINUTE_PRIMARY"),
+        ("trade_accounting.mfe_optimistic_bound_available", True),
+        ("data_acquisition.dataset", "GLBX.MDP3"),
+        ("data_acquisition.symbol_type", "raw_symbol"),
         ("vwap.included", False),
     )
     problems: list[RuleFreezeProblem] = []
@@ -931,6 +951,17 @@ def _protective_order_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
                 RuleFreezeProblem(f"{base}.protective_order_acknowledgement_timeout_seconds", "INVALID", f"must be a quoted positive number of seconds, got {value!r}")
             )
     return problems
+
+
+RETIRED_SETUP_FIELDS = ("definition", "preconditions", "setup_expiry")  # D-033: never reintroduced
+
+
+def _retired_field_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
+    setup = spec.get("setup") if isinstance(spec.get("setup"), dict) else {}
+    return [
+        RuleFreezeProblem(f"setup.{name}", "INVALID", "retired by D-033: setup expiry and rules live in the authoritative sections")
+        for name in RETIRED_SETUP_FIELDS if name in setup
+    ]
 
 
 def _cost_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:

@@ -162,3 +162,93 @@ the future ingestion code.
   parameter selection. Phase 2 should enforce this in code, for example
   with a data loader that refuses holdout dates unless an explicit,
   logged final-evaluation flag is set.
+
+## Round 16A status: estimation and planning only (2026-09-29)
+
+**Nothing has been purchased or downloaded, and no estimate has been
+captured.** In this session `DATABENTO_API_KEY` was not set, and the
+environment's network policy denied `hist.databento.com` (and the Tradeify,
+CME, BLS and Federal Reserve hosts). Every estimate is therefore **UNKNOWN**,
+which is never the same as $0.
+
+### The exact proposed requests
+
+These requests come from `src/mnq_research/data_estimate.py`. They use
+metadata calls only: `get_cost`, `get_billable_size`, `get_record_count` and
+`symbology.resolve`, in `historical` mode.
+
+| | Value |
+|---|---|
+| Dataset | `GLBX.MDP3` |
+| Symbol type | `raw_symbol` (individual contracts; parent and continuous symbols are refused) |
+| Symbols | 31 quarterly contracts designated by the frozen roll rule: `MNQM9 MNQU9 MNQZ9 MNQH0 … MNQU6 MNQZ6`. Each must resolve to exactly one instrument, or the estimate stays UNKNOWN |
+| Start (inclusive) | `2019-05-05T22:00:00Z`: the 18:00 New York Globex open of trade date 2019-05-06 |
+| End (exclusive) | `2026-09-26T00:00:00Z`: after the 17:00 New York close of trade date 2026-09-25 |
+| Prices | Original, unadjusted contract prices |
+
+| Alternative | Schema | Scope |
+|---|---|---|
+| A | `definition` | Symbols, expirations, tick metadata |
+| B | `ohlcv-1m` | Full range: **the baseline** |
+| C | `ohlcv-1s` | Full range |
+| D | `trades` | Full range |
+| E1 | `ohlcv-1s` | Only 09:30–12:05 New York on each weekday. This is 1,930 disjoint windows, DST-correct and summed once. It covers every entry, stop, target and the 12:00 exit, without changing the strategy |
+| E2 | `trades` | The same windows as E1 |
+
+**No double counting.** There is one request per alternative, the symbols
+are unique, and the windows are disjoint (all enforced in code). During a roll
+week the old and new contracts are *different* instruments, and both are
+needed.
+
+**Uncertainties recorded with every estimate:**
+- Databento's metadata API doesn't expose compressed size or account credits.
+  The estimated charge therefore equals the pre-credit estimate unless the
+  portal shows credits.
+- E1 and E2 need about 5,800 metadata calls (1,930 windows × 3), so they may
+  hit rate limits. A failure makes the estimate UNKNOWN, never partial.
+
+### How to obtain the authoritative estimate (on a machine that can reach Databento)
+
+1. Set the key in your shell only. Never put it in a tracked file:
+   `export DATABENTO_API_KEY=...`
+2. Run `uv run --extra databento mnq data estimate`. This installs the pinned
+   client `databento==0.87.0`.
+
+The command writes `outputs/estimates/databento_estimate_<sha>.json`. The
+artifact includes:
+- every request parameter;
+- the raw responses;
+- the client version;
+- the retrieval time;
+- its SHA-256.
+
+The command never downloads data, and the key never appears in the artifact
+or in any error text.
+
+The artifact committed in Round 16A contains only the planned requests,
+with status UNKNOWN.
+
+### Purchase approval (Round 16B gate)
+
+`data_acquisition.purchase_approval` in the spec must record all of:
+- the approver and a UTC time;
+- the **estimate artifact SHA-256**;
+- the **exact request parameters**;
+- a **maximum permitted charge in USD**.
+
+Any change to the request, or any charge above that maximum, needs a new
+approval.
+
+### Calendars
+
+The plan is in `configs/calendar_sources.yaml` (15 sources, all `PLANNED`,
+URLs not yet verified live). `src/mnq_research/calendar_sources.py` refuses
+READY for any source unless it has all of:
+- a verified official URL;
+- the retrieval time and the covered date range;
+- the raw artifact and its matching SHA-256;
+- the parser version;
+- the parsed output and its matching SHA-256;
+- an explicit time-zone treatment.
+
+A recurring rule is never accepted as a history.

@@ -1,0 +1,102 @@
+# Calendar acquisition PLAN (Round 16A). NOTHING HERE IS ACQUIRED YET.
+# Every source stays PLANNED until its raw artifact, parser and parsed output
+# are archived and hashed (src/mnq_research/calendar_sources.py enforces this).
+# URLs are the official starting points identified from knowledge of each
+# agency's site; url_verified stays false until a live retrieval confirms them
+# (this environment's network policy blocked these hosts during Round 16A).
+# Historical release TIMESTAMPS must come from archived schedules/releases,
+# never from a recurring rule.
+sources:
+  - source_id: CME_EQUITY_INDEX_HOLIDAY_AND_EARLY_CLOSE
+    covers: CME Globex equity-index futures holidays, early closes and halts, 2019-05-06..2026-09-25
+    responsible_body: CME Group
+    official_url: https://www.cmegroup.com/tools-information/holiday-calendar.html
+    url_verified: false
+    timezone_treatment: CME publishes Central Time; convert with the IANA America/Chicago rules, store UTC
+    notes: The live page shows current/next holidays only; historical early closes need the archived per-holiday CME trading-hours notices (Globex notices) for each year.
+  - source_id: BLS_EMPLOYMENT_SITUATION
+    covers: Employment Situation release dates and 08:30 ET times
+    responsible_body: U.S. Bureau of Labor Statistics
+    official_url: https://www.bls.gov/bls/news-release/empsit.htm
+    url_verified: false
+    timezone_treatment: Eastern Time wall clock, IANA America/New_York
+  - source_id: BLS_CPI
+    covers: Consumer Price Index release dates and times
+    responsible_body: U.S. Bureau of Labor Statistics
+    official_url: https://www.bls.gov/bls/news-release/cpi.htm
+    url_verified: false
+    timezone_treatment: Eastern Time, IANA America/New_York
+  - source_id: BLS_PPI
+    covers: Producer Price Index release dates and times
+    responsible_body: U.S. Bureau of Labor Statistics
+    official_url: https://www.bls.gov/bls/news-release/ppi.htm
+    url_verified: false
+    timezone_treatment: Eastern Time, IANA America/New_York
+  - source_id: BLS_JOLTS
+    covers: Job Openings and Labor Turnover Survey release dates and times
+    responsible_body: U.S. Bureau of Labor Statistics
+    official_url: https://www.bls.gov/bls/news-release/jolts.htm
+    url_verified: false
+    timezone_treatment: Eastern Time, IANA America/New_York
+  - source_id: BLS_RELEASE_SCHEDULES_BY_YEAR
+    covers: Cross-check of all BLS release timestamps per year (incl. 2019 shutdown-era and 2025 reschedules)
+    responsible_body: U.S. Bureau of Labor Statistics
+    official_url: https://www.bls.gov/schedule/
+    url_verified: false
+    timezone_treatment: Eastern Time, IANA America/New_York
+  - source_id: BEA_GDP_AND_PERSONAL_INCOME_OUTLAYS
+    covers: GDP advance/second/third estimates; Personal Income and Outlays (PCE)
+    responsible_body: U.S. Bureau of Economic Analysis
+    official_url: https://www.bea.gov/news/archive
+    url_verified: false
+    timezone_treatment: Eastern Time, IANA America/New_York
+  - source_id: CENSUS_RETAIL_SALES_AND_DURABLE_GOODS
+    covers: Advance Monthly Retail Sales; Advance Report on Durable Goods
+    responsible_body: U.S. Census Bureau
+    official_url: https://www.census.gov/economic-indicators/
+    url_verified: false
+    timezone_treatment: Eastern Time, IANA America/New_York
+  - source_id: DOL_INITIAL_CLAIMS
+    covers: Weekly Unemployment Insurance claims release dates (holiday-week shifts included)
+    responsible_body: U.S. Department of Labor, Employment and Training Administration
+    official_url: https://oui.doleta.gov/unemploy/claims.asp
+    url_verified: false
+    timezone_treatment: Eastern Time, IANA America/New_York
+  - source_id: ISM_REPORT_ON_BUSINESS
+    covers: ISM Manufacturing and Services PMI release dates and 10:00 ET times
+    responsible_body: Institute for Supply Management
+    official_url: https://www.ismworld.org/supply-management-news-and-reports/reports/ism-report-on-business/
+    url_verified: false
+    timezone_treatment: Eastern Time, IANA America/New_York
+  - source_id: CONFERENCE_BOARD_CONSUMER_CONFIDENCE
+    covers: Consumer Confidence Index release dates and times
+    responsible_body: The Conference Board
+    official_url: https://www.conference-board.org/topics/consumer-confidence
+    url_verified: false
+    timezone_treatment: Eastern Time, IANA America/New_York
+  - source_id: UMICH_CONSUMER_SENTIMENT
+    covers: Surveys of Consumers preliminary and final release dates and times
+    responsible_body: University of Michigan
+    official_url: https://www.sca.isr.umich.edu/
+    url_verified: false
+    timezone_treatment: Eastern Time, IANA America/New_York
+  - source_id: FOMC_MEETINGS_STATEMENTS_PRESS_CONFERENCES
+    covers: FOMC statement times, unscheduled meetings, Chair press-conference times
+    responsible_body: Board of Governors of the Federal Reserve System
+    official_url: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm
+    url_verified: false
+    timezone_treatment: Eastern Time, IANA America/New_York
+    notes: Pre-2021 meetings move to https://www.federalreserve.gov/monetarypolicy/fomc_historical.htm
+  - source_id: FED_CHAIR_TESTIMONY
+    covers: Scheduled Chair monetary-policy testimony dates and hearing start/end times
+    responsible_body: Board of Governors of the Federal Reserve System; congressional committee records
+    official_url: https://www.federalreserve.gov/newsevents/testimony.htm
+    url_verified: false
+    timezone_treatment: Eastern Time, IANA America/New_York
+    notes: Hearing start/end times come from the committee hearing records; end times may be unknown -> fail closed per the duration-event rule.
+  - source_id: SESSION_AND_ROLL_CALENDAR
+    covers: Derived versioned calendar of full trading dates, holidays, early closes, roll dates and UNKNOWN dates
+    responsible_body: Derived in-repo from the CME source and the frozen roll rule
+    official_url: https://www.cmegroup.com/tools-information/holiday-calendar.html
+    url_verified: false
+    timezone_treatment: CME trading date; Globex sessions in America/Chicago, stored UTC

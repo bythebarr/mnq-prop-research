@@ -60,3 +60,14 @@ def trading_date_state(required_levels_reliable: bool, calendars_available: bool
 def open_position_flags(minutes: Iterable[MinuteQuality]) -> tuple[str, ...]:
     """Data-quality flags for a trade whose open period contains these minutes."""
     return () if decision_interval_state(minutes) is IntervalState.ELIGIBLE else (OPEN_POSITION_DATA_GAP,)
+
+
+GAP_QUALITIES = frozenset({MinuteQuality.KNOWN_DATA_OUTAGE, MinuteQuality.UNEXPLAINED_MISSING_MINUTE, MinuteQuality.REJECTED_BAD_DATA})
+
+
+def gap_minutes(minutes: Iterable[MinuteQuality]) -> int:
+    """Data-gap minutes (compared with missing_data.max_tolerated_gap_minutes = 0).
+
+    A VERIFIED_NO_TRADE_MINUTE is never a gap; an untyped entry counts as one (fail closed).
+    """
+    return sum(1 for m in minutes if type(m) is not MinuteQuality or m in GAP_QUALITIES)

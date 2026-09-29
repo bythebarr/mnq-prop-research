@@ -71,6 +71,56 @@ def cmd_rules_stage(args: argparse.Namespace, root: Path) -> int:
     return OK if report.is_ready else FOUND_PROBLEMS
 
 
+def cmd_data_estimate(args: argparse.Namespace, root: Path) -> int:
+    """Databento COST ESTIMATE only (metadata calls). Never downloads, never prints the key."""
+    import datetime as dt
+
+    from mnq_research import data_estimate as de
+    from mnq_research.config import load_mapping
+
+    spec = load_mapping(_resolve(args.spec, root))
+    first = dt.date.fromisoformat(str(spec["source_data"]["history_start_date"]))
+    last = dt.date.fromisoformat(str(spec["source_data"]["history_end_date"]))
+    requests = de.alternatives(first, last)
+    out_dir = _resolve(args.out, root)
+    try:
+        key = de.load_api_key()
+    except de.MissingCredentialError as exc:
+        results = [
+            de.EstimateResult(request=de.asdict(r), status=de.EstimateStatus.UNKNOWN, estimated_cost_before_credits_usd=None,
+                              applicable_credits_usd=None, estimated_charge_usd=None, currency="USD",
+                              billable_size_uncompressed_bytes=None, compressed_size_bytes=de.NOT_EXPOSED, record_count=None,
+                              symbol_resolution={}, includes_definitions=r.schema == "definition",
+                              double_count_risk="not assessed: no request made", warnings=[str(exc)])
+            for r in requests
+        ]
+        path = de.write_artifact(results, out_dir, None)
+        print(f"{exc}.\nNo request was sent. Planned requests written with status UNKNOWN: {path}")
+        print(f"After setting {de.API_KEY_ENV} in your shell (never in a tracked file), run:\n"
+              "  uv run --extra databento mnq data estimate")
+        return FOUND_PROBLEMS
+    import databento
+
+    client = de.MetadataOnlyClient(databento.Historical(key))
+    results = [de.estimate(r, client, databento.__version__, key) for r in requests]
+    path = de.write_artifact(results, out_dir, key)
+    for r in results:
+        print(f"{r.request['alternative']:3} {r.request['schema']:10} {r.status.value:8} charge={r.estimated_charge_usd} "
+              f"size_bytes={r.billable_size_uncompressed_bytes} warnings={len(r.warnings)}")
+    print(f"Artifact: {path}")
+    return OK if all(r.status is de.EstimateStatus.KNOWN for r in results) else FOUND_PROBLEMS
+
+
+def cmd_sources_archive_commission(args: argparse.Namespace, root: Path) -> int:
+    from mnq_research.config import load_mapping
+    from mnq_research.source_archive import archive_commission_source
+
+    c = load_mapping(_resolve(args.spec, root))["commissions"]
+    m = archive_commission_source(str(c["round_turn_per_contract_usd"]), str(c["per_side_per_contract_usd"]), _resolve(args.out, root))
+    print(json.dumps(m.__dict__, indent=2))
+    return OK if m.status == "MATCHES_CONFIGURATION" else FOUND_PROBLEMS
+
+
 def cmd_data_synth(args: argparse.Namespace, root: Path) -> int:
     spec = SyntheticSpec(first_trading_date=args.start, n_trading_days=args.days, seed=args.seed)
     df = generate_synthetic_bars(spec)
@@ -166,6 +216,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--with-defects", action="store_true", help="plant known defects to demonstrate validation")
     p.add_argument("--out", help=f"output .parquet path (default under {DEFAULT_SYNTHETIC_DIR})")
     p.set_defaults(func=cmd_data_synth)
+    p = data.add_parser("estimate", help="Databento COST ESTIMATE only (no download); key from DATABENTO_API_KEY")
+    p.add_argument("--spec", default=str(DEFAULT_RULE_FREEZE_PATH))
+    p.add_argument("--out", default="outputs/estimates")
+    p.set_defaults(func=cmd_data_estimate)
     p = data.add_parser("validate", help="validate a .parquet or .csv bar file against the data contract")
     p.add_argument("path")
     p.add_argument("--max-gaps", type=int, default=10, help="how many missing-bar gaps to list")
@@ -174,6 +228,12 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("hash", help="print reproducible hashes of config files, data files or folders")
     p.add_argument("paths", nargs="+")
     p.set_defaults(func=cmd_hash)
+
+    src = sub.add_parser("sources", help="archive external sources").add_subparsers(dest="action", required=True)
+    p = src.add_parser("archive-commission", help="archive the Tradeify commission page (raw bytes + SHA-256 manifest)")
+    p.add_argument("--spec", default=str(DEFAULT_RULE_FREEZE_PATH))
+    p.add_argument("--out", default="archives/sources/tradeify_commissions")
+    p.set_defaults(func=cmd_sources_archive_commission)
 
     exp = sub.add_parser("experiment", help="experiment registry").add_subparsers(dest="action", required=True)
     p = exp.add_parser("inspect", help="show an experiment plan and everything blocking it")

@@ -82,9 +82,11 @@ STAGE_PREFIXES: dict[str, Stage] = {
     "vwap": S,
     "missing_data.policy": S,
     "missing_data.max_tolerated_gap_minutes": S,
+    "missing_data.verified_no_trade_minutes": S,
     "bad_data": S,
     "execution_eligibility_integration": S,
     "research_pipeline": S,
+    "data_acquisition": S,
     # --- ONE_CONTRACT_BACKTEST: execution simulation, exits, costs, accounting
     "news_events.open_position_during_event": O,
     "execution_eligibility_integration.simulated_execution_producers_status": O,

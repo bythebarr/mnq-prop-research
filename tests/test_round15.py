@@ -49,6 +49,11 @@ def signal_ready_spec() -> dict:
                  "research_pipeline.deterministic_replay_wiring_status"):
         section, name = path.split(".")
         spec[section][name] = "TEST_FIXTURE_IMPLEMENTED"
+    spec["data_acquisition"]["purchase_approval"] = {
+        "approved": True, "approved_by": "pytest", "approved_at_utc": "2026-09-29T12:00:00Z",
+        "estimate_artifact_sha256": "TEST_FIXTURE", "exact_request_parameters": "TEST_FIXTURE",
+        "maximum_permitted_charge_usd": "TEST_FIXTURE",
+    }
     approve(spec, Stage.SIGNAL_REPLAY)
     return spec
 
@@ -209,8 +214,8 @@ def test_scaling_remains_none():
 def test_commission_is_0_91_per_side_per_contract():
     assert COSTS.commission_per_side_usd == D("0.91") and COSTS.commission_round_trip_usd == D("1.82")
     assert COSTS.commission_usd(2, "BASE") == D("1.82")
-    assert COSTS.commission_usd(2, "COMMISSION_STRESS_125") == D("2.275")
-    assert COSTS.commission_usd(2, "COMMISSION_STRESS_150") == D("2.73")
+    assert COSTS.commission_usd(2, "COMMISSION_STRESS_1_25X") == D("2.275")
+    assert COSTS.commission_usd(2, "COMMISSION_STRESS_1_50X") == D("2.73")
     spec = copy.deepcopy(SPEC)
     spec["commissions"]["per_side_per_contract_usd"] = "0.90"  # no longer half of 1.82
     assert "commissions/slippage" in invalid_paths(spec)

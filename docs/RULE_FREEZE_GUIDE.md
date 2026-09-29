@@ -1178,6 +1178,36 @@ sizing formula says? It must not exceed the prop firm's limit.
 **Question:** Are entry, bracket and exit simulation wired into the replay?
 **Illustrative only:** "Wired and tested."
 
+### `trade_accounting.mae_entry_minute_policy`
+*(Added in D-033 / Round 16A.)*
+**Question:** With one-minute data, how does the entry minute count toward MAE?
+**Illustrative only:** `INCLUDE_FULL_MINUTE_CONSERVATIVE`.
+
+### `trade_accounting.mfe_entry_minute_policy`
+*(Added in D-033 / Round 16A.)*
+**Question:** With one-minute data, how does the entry minute count toward the primary MFE?
+**Illustrative only:** `EXCLUDE_FULL_MINUTE_PRIMARY`.
+
+### `trade_accounting.mfe_optimistic_bound_available`
+*(Added in D-033 / Round 16A.)*
+**Question:** Is a separate optimistic MFE bound reported?
+**Illustrative only:** `true`.
+
+### `trade_accounting.entry_minute_rule`
+*(Added in D-033 / Round 16A.)*
+**Question:** What exactly happens to excursions in the entry minute, and when do finer data replace that?
+**Illustrative only:** "Adverse extreme in, favourable out, flagged."
+
+### `trade_accounting.scenario_results`
+*(Added in D-033 / Round 16A.)*
+**Question:** How are base and stress results kept apart?
+**Illustrative only:** "One record per scenario; stress is labelled hypothetical."
+
+### `trade_accounting.gap_trade_costs`
+*(Added in D-033 / Round 16A.)*
+**Question:** Which costs does a data-gap trade carry, in the primary record and in the stress record?
+**Illustrative only:** "Entry commission only; stress adds the full loss exit."
+
 ## 12. Daily limits, re-entry and flattening
 
 ### `daily_limits.max_filled_entries_per_trading_date`
@@ -1316,6 +1346,11 @@ trading window."
 still acceptable?
 **Illustrative only:** `5`.
 
+### `missing_data.verified_no_trade_minutes`
+*(Added in D-033 / Round 16A.)*
+**Question:** Is a minute with verifiably no trades a data gap?
+**Illustrative only:** "No; it stays VERIFIED_NO_TRADE_MINUTE."
+
 ### `missing_data.open_position_during_gap`
 **Question:** How is an open position treated if data goes missing while it
 is open?
@@ -1392,6 +1427,16 @@ fees?
 **Question:** What is charged for each contract side (entry or exit)?
 **Illustrative only:** `"0.91"`.
 
+### `commissions.source_url`
+*(Added in D-033 / Round 16A.)*
+**Question:** Which page is the official source of the commission figure?
+**Illustrative only:** The Tradeify Help Center commissions article.
+
+### `commissions.source_change_rule`
+*(Added in D-033 / Round 16A.)*
+**Question:** What happens if the source page changes?
+**Illustrative only:** "A new decision and spec version; never a silent update."
+
 ### `commissions.source_archive_status`
 *(Added in Round 15.)*
 **Question:** Has the fee source been archived (URL, time, hash)?
@@ -1421,6 +1466,28 @@ fees?
 *(Added in Round 15.)*
 **Question:** How do you avoid charging slippage twice?
 **Illustrative only:** "Modelled fills only; actual fills keep their price."
+
+## 16b. Historical data acquisition (Round 16A)
+
+### `data_acquisition.dataset`
+*(Added in D-033 / Round 16A.)*
+**Question:** Which Databento dataset?
+**Illustrative only:** `GLBX.MDP3`.
+
+### `data_acquisition.symbol_type`
+*(Added in D-033 / Round 16A.)*
+**Question:** Individual contracts or a continuous series?
+**Illustrative only:** `raw_symbol` (individual contracts).
+
+### `data_acquisition.symbol_resolution`
+*(Added in D-033 / Round 16A.)*
+**Question:** Which contracts exactly, and how are they chosen?
+**Illustrative only:** "MNQM9 … MNQZ6 from the frozen roll rule."
+
+### `data_acquisition.time_range`
+*(Added in D-033 / Round 16A.)*
+**Question:** Which exact UTC range covers the frozen trade dates?
+**Illustrative only:** "2019-05-05T22:00Z to 2026-09-26T00:00Z."
 
 ## 17. Prop-account rules
 

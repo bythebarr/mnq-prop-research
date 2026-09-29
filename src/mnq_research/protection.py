@@ -841,6 +841,7 @@ class PriceInterval:
     low: Decimal
     source: PriceSource
     source_reference: str
+    end_utc: pd.Timestamp | None = None  # exclusive end for bars; None for a single trade
 
 
 def _stop_hit(side: Side, stop: Decimal, interval: PriceInterval) -> bool:

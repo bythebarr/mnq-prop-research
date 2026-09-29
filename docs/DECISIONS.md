@@ -911,4 +911,77 @@ labels, and item 2 was confirmed (Round 15, D-033).
    independently. It must be archived before the ONE_CONTRACT_BACKTEST
    approval.
 **Reversible:** yes.
-**Status:** Round 15 rules CONFIRMED by the owner. Items 1–8 PENDING.
+**Status:** Round 15 rules CONFIRMED. Items 1–8 CONFIRMED with amendments
+(D-034).
+
+## D-034 — D-033 confirmations and Round 16A (cost estimation and source archiving only)
+**Decision (rule owner, 2026-09-29):**
+1. `max_tolerated_gap_minutes: 0` covers unexplained minutes and known
+   outages. `VERIFIED_NO_TRADE_MINUTE` is never a gap.
+2. The setup fields are pointers only. `setup.definition`, `preconditions`
+   and `setup_expiry` may never return (the validator rejects them).
+3. Each cost scenario keeps its own record, with its own commission multiplier
+   in initial risk. BASE is `BASE_ASSUMPTIONS`; every other scenario is
+   `HYPOTHETICAL_STRESS` and never replaces it. The scenarios are named BASE,
+   COMMISSION_STRESS_1_25X and COMMISSION_STRESS_1_50X.
+4. **Gap trades.** The primary record charges only costs known to have
+   occurred (the entry side). The labelled stress record adds a loss exit at
+   the stop with adverse stop slippage and a full round-trip commission.
+5. **Entry minute with one-minute data.** MAE includes the full minute
+   (conservative). The primary MFE excludes it, and a separate optimistic MFE
+   bound includes it. The record is flagged
+   `ENTRY_MINUTE_EXCURSION_APPROXIMATION`. Authoritative finer data around
+   the fill replace this.
+6. The execution-safety pointer is confirmed: CLEAR / BLOCKED / UNKNOWN, and
+   anything missing, malformed or UNKNOWN blocks.
+7. The stage assignments are confirmed.
+8. Archive the commission source; a changed page needs a new decision.
+
+**Round 16A implementation:**
+- **`data_estimate.py`:**
+  - requests are restricted to explicit individual MNQ contracts;
+  - the only client access is an allow-list wrapper around four metadata
+    calls;
+  - a symbol that doesn't resolve to exactly one instrument makes the
+    estimate UNKNOWN;
+  - UNKNOWN is never zero;
+  - windows must be disjoint and symbols unique;
+  - artifacts are hash-addressed, and the key is redacted and refused;
+  - the new command is `mnq data estimate`.
+- **`source_archive.py`:** raw bytes named by SHA-256, plus a manifest (title,
+  date, extract, the 1.82 / 2 = 0.91 check). A changed page gives
+  `MISMATCH_REQUIRES_NEW_DECISION`. The new command is
+  `mnq sources archive-commission`.
+- **`calendar_sources.py` and `configs/calendar_sources.yaml`:** 15 planned
+  sources, with fail-closed readiness.
+- **Accounting:**
+  - the D-033 entry-minute policy;
+  - the `result_basis` label;
+  - explicit gap-stress exit and commission fields;
+  - `data_quality.gap_minutes`.
+- **Spec:**
+  - a new `data_acquisition` section, with the purchase approval (it blocks
+    SIGNAL_REPLAY until filled);
+  - `commissions.source_url`;
+  - the new trade-accounting policy fields.
+- **Dependency:** optional extra `databento==0.87.0`, never needed by the
+  core.
+
+**Blocked in this session:**
+- `DATABENTO_API_KEY` was not set.
+- The network policy denied `hist.databento.com`, `help.tradeify.co`,
+  `www.cmegroup.com`, `www.bls.gov` and `www.federalreserve.gov`.
+
+Consequences:
+- Every Databento estimate is **UNKNOWN**.
+- The Tradeify archive was **not captured** (FETCH_FAILED, 403 at the proxy).
+  The page URL was identified through a web search:
+  https://help.tradeify.co/en/articles/10468315-trading-commission-fees
+- No calendar source was retrieved.
+
+**Testing:** 19 Round 16A tests, 323 in total. Of 20 mutation checks, 1
+survived at first (exact-key redaction); a test was added, and all are now
+caught.
+**Reversible:** yes.
+**Status:** D-033 CONFIRMED. Round 16A is complete as planning only. Round 16B
+(ingestion) waits for an approved request, estimate hash and maximum charge.

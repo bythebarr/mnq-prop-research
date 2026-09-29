@@ -76,6 +76,8 @@ example, run `mnq rules check` instead of `uv run mnq rules check`.
 |---|---|
 | 1. Check the rule freeze (lists every unanswered question) | `uv run mnq rules check` |
 | 1b. Check one staged readiness gate | `uv run mnq rules stage SIGNAL_REPLAY` |
+| 1c. Databento cost estimate (no download; key from `DATABENTO_API_KEY`) | `uv run --extra databento mnq data estimate` |
+| 1d. Archive the Tradeify commission page | `uv run mnq sources archive-commission` |
 | 2. Generate SYNTHETIC FAKE test data | `uv run mnq data synth` |
 | 2b. …with known defects planted, to see validation catch them | `uv run mnq data synth --with-defects` |
 | 3. Validate a data file | `uv run mnq data validate data/interim/synthetic/synthetic_FAKE_mnq_seed20240108.parquet` |
@@ -142,6 +144,9 @@ mnq-prop-research/
 │   ├── costs.py               ← Round 15 commission and slippage model
 │   ├── accounting.py          ← Round 15 trade P&L, R and MAE/MFE
 │   ├── data_quality.py        ← Round 15 missing/bad-data classification
+│   ├── data_estimate.py       ← Round 16A Databento COST ESTIMATE only (metadata calls; no download)
+│   ├── source_archive.py      ← Round 16A raw, hashed archiving of external sources
+│   ├── calendar_sources.py    ← Round 16A calendar-source plan with fail-closed readiness
 │   ├── level_states.py        ← Round 9 zone interaction states (component only)
 │   ├── structural_levels.py   ← Round 8 level rules (component only; not a backtest)
 │   └── synthetic_data.py      ← FAKE data for software tests only

@@ -1640,6 +1640,51 @@ trade_accounting:
     timing is marked approximate.
   record_fields: [trading_date, contract, direction, identifiers, entry_legs, exit_legs, actual_average_entry, actual_average_exit, stop, target, gross_points, gross_pnl_usd, commissions_usd, net_pnl_usd, planned_risk_points, planned_risk_usd_before_costs, actual_initial_risk_usd, result_r_price_only, result_r_net, mfe_points, mae_points, mfe_r, mae_r, time_to_mfe, time_to_mae, time_in_trade, exit_reason, final_flattening_leg, slippage_scenario, commission_scenario, data_quality_flags, scorable, hashes]
   reproducibility_hashes: [specification_hash, code_hash, data_hash, calendar_hash]
+  # D-033 (rule owner, 2026-09-29)
+  mae_entry_minute_policy: INCLUDE_FULL_MINUTE_CONSERVATIVE
+  mfe_entry_minute_policy: EXCLUDE_FULL_MINUTE_PRIMARY
+  mfe_optimistic_bound_available: true
+  entry_minute_rule: >
+    With one-minute data, the bar containing the entry fill contributes its
+    full adverse extreme to MAE (conservative), is excluded from primary MFE,
+    and may be included only in a separate optimistic MFE bound; flag
+    ENTRY_MINUTE_EXCURSION_APPROXIMATION. Authoritative finer data around the
+    fill replace this: MAE and MFE start at the fill timestamp, no flag.
+  scenario_results: >
+    Every cost scenario keeps its own record, with its own commission
+    multiplier inside its initial risk. BASE (BASE_SLIPPAGE with BASE
+    commission) is the base-assumption result; every other combination is
+    labelled HYPOTHETICAL_STRESS and never overwrites or replaces it.
+  gap_trade_costs: >
+    Primary unscorable gap record: only costs known to have occurred
+    (normally the entry-side commission). Separate labelled full-loss stress
+    record: loss exit at the stop with adverse stop slippage and a complete
+    round-trip commission.
+
+# --- Historical data acquisition (added Round 16A) -----------------------------------------------------------
+# Estimation and planning only. Nothing has been purchased or downloaded.
+# Implemented in src/mnq_research/data_estimate.py (metadata calls only).
+data_acquisition:
+  dataset: GLBX.MDP3
+  symbol_type: raw_symbol   # individual quarterly contracts; never parent or continuous
+  symbol_resolution: >
+    Deterministic from the frozen roll rule: every quarterly MNQ contract
+    designated at any time between 2019-05-06 and 2026-09-25 (MNQM9 ..
+    MNQZ6), each verified by symbology.resolve to exactly one instrument over
+    the range. Unadjusted contract prices.
+  time_range: >
+    Start 2019-05-05T22:00:00Z (the 18:00 New York Globex open of trade date
+    2019-05-06); end 2026-09-26T00:00:00Z exclusive (after the 17:00 New York
+    close of trade date 2026-09-25).
+  estimate_status: UNKNOWN_UNTIL_AUTHORITATIVE_ESTIMATE_CAPTURED
+  purchase_approval:   # Round 16B may start only after the owner fills this in
+    approved: false
+    approved_by: null
+    approved_at_utc: null
+    estimate_artifact_sha256: null
+    exact_request_parameters: null
+    maximum_permitted_charge_usd: null
+  purchase_rule: Any change to the request or any charge above the approved maximum requires a new approval.
 
 # --- Research pipeline readiness (added Round 15) -------------------------------------------------------------
 # Implementation facts, not rules. Each stays a blocker until built and verified.
@@ -1675,7 +1720,9 @@ daily_limits:
 # --- No-trade conditions (added Round 2) -------------------------------------------------------------------
 no_trade_conditions:
   execution_safety_conditions: >
-    Round 15: the typed producers listed in
+    Round 15 / D-033 confirmed: every required producer returns CLEAR,
+    BLOCKED or UNKNOWN; missing, malformed or UNKNOWN state blocks entry. The
+    typed producers listed in
     execution_eligibility_integration.simulated_producers_required (session,
     news, data validity, position state, daily filled-entry allowance,
     directional-conflict halt, structural-stop validity, candidate validity,
@@ -1791,7 +1838,11 @@ missing_data:
     is ineligible, and a completely fresh setup is required after validity
     resumes. If required daily levels or calendars cannot be built reliably,
     the entire trading date is ineligible.
-  max_tolerated_gap_minutes: 0   # unexplained or outage minutes tolerated: none (verified no-trade minutes are not gaps)
+  max_tolerated_gap_minutes: 0   # D-033 confirmed: applies to unexplained missing minutes AND known outages
+  verified_no_trade_minutes: >
+    A minute positively verified as having no trades is NOT a data gap; it
+    stays explicitly classified VERIFIED_NO_TRADE_MINUTE, never MISSING or
+    OUTAGE.
   open_position_during_gap: >
     OPEN_POSITION_DATA_GAP_UNRESOLVED: never invent an exit or award a target;
     never silently drop the trade; exclude it from primary win/loss
@@ -1825,8 +1876,10 @@ commissions:
     Total Round Trip Cost $1.82 per contract (stated to include exchange,
     NFA, clearing and commission charges), as supplied by the rule owner;
     retrieval date 2026-09-29. Not independently verified in this repository.
+  source_url: https://help.tradeify.co/en/articles/10468315-trading-commission-fees   # identified Round 16A; raw archive not yet captured
   source_archive_status: REQUIRED_BEFORE_EXECUTABLE   # archive URL, retrieval timestamp and content hash before ONE_CONTRACT_BACKTEST approval
-  stress_multipliers: {BASE: "1.00", COMMISSION_STRESS_125: "1.25", COMMISSION_STRESS_150: "1.50"}
+  source_change_rule: A changed source page never updates these values silently; it requires a new decision and specification version.
+  stress_multipliers: {BASE: "1.00", COMMISSION_STRESS_1_25X: "1.25", COMMISSION_STRESS_1_50X: "1.50"}
 
 # --- Slippage assumptions -------------------------------------------------------------------------------------------------------------
 slippage:
