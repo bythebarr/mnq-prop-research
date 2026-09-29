@@ -108,6 +108,7 @@ mnq-prop-research/
 │   ├── CONFIRMATION.md        ← plain-English confirmation rules
 │   ├── DIRECTION.md           ← plain-English direction rules
 │   ├── TRADE_GEOMETRY.md      ← plain-English geometry and selection rules
+│   ├── ORDER_LIFECYCLE.md     ← plain-English entry-order lifecycle (simulation only)
 │   └── DECISIONS.md           ← architecture decisions and rationale
 ├── data/                      ← NOT committed to Git (except placeholders)
 │   ├── raw/                   ← vendor files exactly as received
@@ -128,6 +129,8 @@ mnq-prop-research/
 │   ├── confirmation.py        ← Round 10 continuation confirmation (component only)
 │   ├── direction.py           ← Round 11 event-derived direction and conflicts (component only)
 │   ├── trade_geometry.py      ← Round 12 planned entry/stop/target and selection (component only)
+│   ├── eligibility.py         ← D-028 typed, fail-closed eligibility controls
+│   ├── entry_order.py         ← Round 13 simulated market entry-order lifecycle (no broker)
 │   ├── level_states.py        ← Round 9 zone interaction states (component only)
 │   ├── structural_levels.py   ← Round 8 level rules (component only; not a backtest)
 │   └── synthetic_data.py      ← FAKE data for software tests only

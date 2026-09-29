@@ -37,27 +37,47 @@ Rules that protect honesty:
   fractions for R:R. Floating-point rounding never decides a threshold or a
   tie.
 
-## Choosing among same-direction candidates
+## Choosing among same-direction candidates (D-028)
 
 At one decision time, keep only the room-qualified candidates. Then:
 1. Pick the highest gross R:R.
 2. Then the smallest planned risk.
-3. Then the greatest planned reward.
 
-An **exact tie** means **no trade at that timestamp**
+That is the whole list. A third criterion, "greatest reward", was removed:
+with equal R:R and equal risk, reward is equal too, so it could never decide
+anything. The list is never reordered to prefer bigger rewards.
+
+An **exact tie on both** means **no trade at that timestamp**
 (`NO_TRADE_SAME_DIRECTION_GEOMETRY_TIE`). The tied confirmations are used up,
 but the day is **not** halted. Input order, names and IDs never decide.
 
+Lower-ranked candidates become **terminal** with the reason
+`NOT_SELECTED_BY_GEOMETRY_RANKING`. They can never come back through the same
+confirmation, acceptance or attempt.
+
 The winner becomes a `SELECTED_ENTRY_CANDIDATE`. It carries every identifier
-and planned price, the spec version and the spec hash. It is still **not an
-order**.
+and planned price, the confirmation close and origin-zone boundaries, the spec
+version and the spec hash. It is still **not an order**; the entry order is
+described in `ORDER_LIFECYCLE.md`.
 
-## Open items (D-028)
+## Eligibility is typed and fails closed (D-028)
 
-1. **The third ranking criterion can never decide anything.** If two
-   candidates have equal R:R and equal risk, their rewards must be equal too.
-2. **Lower-ranked candidates** at a selection become non-executable, so they
-   aren't reconsidered later.
-3. **Blackout, news-protection and safety halts** are passed in as named
-   blocking conditions. The news-calendar logic that would produce them
-   isn't built yet.
+Geometry no longer accepts a free-form list of "blocking conditions". It takes
+an `ExecutionEligibility` snapshot (`src/mnq_research/eligibility.py`), which
+has one field per control: news blackout, news protection, safety halt,
+directional-conflict halt, daily entry halt, session, data, candidate,
+open position, working order, contract and zones.
+
+* Each field must be `ControlState.CLEAR`, `BLOCKED` or `UNKNOWN`.
+* Only CLEAR on **every** field lets a candidate through.
+* The plain string `"CLEAR"`, `True`/`False`, `None` or a missing field is
+  refused. When the snapshot is built from a mapping, a missing or wrongly
+  typed entry becomes `UNKNOWN`, which blocks.
+
+The real producers of these states (the news calendar, safety monitor, data
+checks) are not built yet. So `execution_eligibility_integration.status` is
+`REQUIRED_BEFORE_EXECUTABLE`, and the rule check keeps the spec
+non-executable until they are integrated.
+
+Target zones must already exist at the decision time. For example, an
+opening-range zone can be a target only from 09:45 (confirmed in D-028).

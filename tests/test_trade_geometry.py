@@ -23,6 +23,7 @@ from mnq_research import trade_geometry
 from mnq_research.config import load_mapping
 from mnq_research.confirmation import Side
 from mnq_research.direction import CandidateStatus as S, DailyDirectionBook, DirectionCandidate
+from mnq_research.eligibility import ControlState, ExecutionEligibility
 from mnq_research.level_states import ZoneTracker
 from mnq_research.structural_levels import LevelType, StructuralLevel, cluster_levels, ny_time
 from mnq_research.trade_geometry import GeometryParams, SelectionResult as R, evaluate_geometry, select_candidate
@@ -33,6 +34,7 @@ GP = GeometryParams.from_spec(SPEC)
 T = ny_time(TRADE, dt.time(10, 30))
 T0945 = ny_time(TRADE, dt.time(9, 45))
 D = Decimal
+CLEAR = ExecutionEligibility.all_clear()
 
 
 def zone(lower: str, upper: str, label: str, contract: str = "MNQM4", date: dt.date = TRADE) -> ZoneTracker:
@@ -64,8 +66,8 @@ def cand(side: str = "LONG", close: str = "20010", lo: str = "20000", hi: str = 
     )
 
 
-def geo(c, *zones, **kwargs):
-    return evaluate_geometry(c, T, [ORIGIN, *zones], GP, **kwargs)
+def geo(c, *zones, eligibility=CLEAR):
+    return evaluate_geometry(c, T, [ORIGIN, *zones], GP, eligibility)
 
 
 # =========================================================================== entry, stop, risk
@@ -90,7 +92,7 @@ def test_the_stop_distance_cannot_be_compressed():
     assert far.planned_risk_points == D("20.50")
     # No argument exists to override the stop or target a dollar risk / contract count.
     assert list(inspect.signature(evaluate_geometry).parameters) == [
-        "candidate", "decision_time_utc", "active_zones", "params", "blocking_conditions"
+        "candidate", "decision_time_utc", "active_zones", "params", "eligibility"
     ]
 
 
@@ -153,9 +155,10 @@ def test_exactly_1_50_r_qualifies_and_less_fails():
 
 
 def test_eligibility_failures_are_recorded_with_exact_reasons():
-    r = geo(cand("LONG"), zone("20026.25", "20030", "T-"), blocking_conditions=("NEWS_ENTRY_PROTECTION",))
+    blocked = ExecutionEligibility.from_mapping({**CLEAR.__dict__, "news_entry_protection": ControlState.BLOCKED})
+    r = geo(cand("LONG"), zone("20026.25", "20030", "T-"), eligibility=blocked)
     assert r.rejection_reasons == ("BLOCKED:NEWS_ENTRY_PROTECTION",)
-    late = evaluate_geometry(cand("LONG"), ny_time(TRADE, dt.time(11, 30)), [ORIGIN, zone("20026.25", "20030", "T-")], GP)
+    late = evaluate_geometry(cand("LONG"), ny_time(TRADE, dt.time(11, 30)), [ORIGIN, zone("20026.25", "20030", "T-")], GP, CLEAR)
     assert "DECISION_TIME_OUTSIDE_ENTRY_WINDOW" in late.rejection_reasons
     c = cand("LONG")
     c.status = S.INVALIDATED_BY_DIRECTIONAL_CONFLICT
@@ -178,7 +181,10 @@ def test_same_direction_candidates_rank_by_the_stated_criteria():
     sel = select_candidate(T, [b, c, a], GP)
     assert sel.result is R.SELECTED and sel.selected.acceptance_id == a.candidate.acceptance_id
     assert a.candidate.status is S.USED_BY_ENTRY_CANDIDATE
-    assert b.candidate.status is c.candidate.status is S.NON_EXECUTABLE_NOT_SELECTED
+    assert b.candidate.status is c.candidate.status is S.NOT_SELECTED_BY_GEOMETRY_RANKING  # D-028: terminal
+    for loser in (b, c):
+        with pytest.raises(ValueError):  # never reusable
+            DailyDirectionBook.mark_used(loser.candidate)
 
 
 def test_secondary_criterion_smaller_risk_wins_at_equal_rr():
@@ -191,8 +197,27 @@ def test_secondary_criterion_smaller_risk_wins_at_equal_rr():
         for r in order:
             r.candidate.status = S.ENTRY_CANDIDATE
         assert select_candidate(T, order, GP).selected.acceptance_id == a.candidate.acceptance_id
-    # Tertiary criterion: with equal R:R and equal risk, reward is necessarily equal too
-    # (reward = R:R x risk), so it can never break a tie on its own (D-028 note).
+    # D-028: there is no third criterion. Equal R:R and equal risk imply equal reward.
+
+
+def test_ranking_has_exactly_two_criteria_and_rejects_any_other_list():
+    assert trade_geometry.RANKING_CRITERIA == ("highest_planned_gross_rr", "smallest_planned_risk_points")
+    assert SPEC["trade_geometry"]["parameters"]["candidate_ranking"] == list(trade_geometry.RANKING_CRITERIA)
+    assert SPEC["trade_geometry"]["parameters"]["exact_tie_action"] == "NO_TRADE_SAME_DIRECTION_GEOMETRY_TIE"
+    for bad in (
+        ["highest_planned_gross_rr", "smallest_planned_risk_points", "greatest_planned_reward_points"],
+        ["highest_planned_gross_rr", "greatest_planned_reward_points"],  # reordered to prefer reward
+        ["smallest_planned_risk_points", "highest_planned_gross_rr"],
+    ):
+        spec = copy.deepcopy(SPEC)
+        spec["trade_geometry"]["parameters"]["candidate_ranking"] = bad
+        assert ("trade_geometry.parameters.candidate_ranking", "INVALID") in {(p.path, p.kind) for p in check_rule_freeze(spec).problems}
+        with pytest.raises(ValueError):
+            GeometryParams.from_spec(spec)
+    spec = copy.deepcopy(SPEC)
+    spec["trade_geometry"]["parameters"]["exact_tie_action"] = "NO_TRADE"
+    with pytest.raises(ValueError):
+        GeometryParams.from_spec(spec)
 
 
 def test_ranking_is_independent_of_input_order():
@@ -203,7 +228,7 @@ def test_ranking_is_independent_of_input_order():
     assert len(picks) == 1
 
 
-def test_an_exact_three_criterion_tie_creates_no_trade_but_does_not_halt_the_date():
+def test_an_exact_two_criterion_tie_creates_no_trade_but_does_not_halt_the_date():
     target = zone("20040", "20044", "T-")
     one, two = geo(cand("LONG", key="A"), target), geo(cand("LONG", key="B"), target)  # identical geometry
     sel = select_candidate(T, [one, two], GP)
@@ -250,7 +275,7 @@ def test_end_to_end_from_a_real_confirmation():
     t = s.sequence.events[-1].timestamp_utc
     (candidate,) = DailyDirectionBook(TRADE, "MNQM4").resolve(t, [s.sequence]).candidates
     target = zone("20100", "20104", "E2E-")
-    r = evaluate_geometry(candidate, t, [s.engine.zone, target], GP)
+    r = evaluate_geometry(candidate, t, [s.engine.zone, target], GP, CLEAR)
     assert r.planned_entry_price == D("20009.50") and r.planned_stop_price == D("19999.75") and r.qualified
     assert select_candidate(t, [r], GP).selected.confirmation_id == s.sequence.confirmation_id
 
@@ -262,7 +287,7 @@ def test_all_numeric_trading_parameters_come_from_the_specification():
     spec = copy.deepcopy(SPEC)
     spec["trade_geometry"]["parameters"].update(minimum_planned_gross_rr="2.00", target_buffer_ticks=2, planned_entry_adverse_buffer_ticks=2)
     gp = GeometryParams.from_spec(spec)
-    r = evaluate_geometry(cand("LONG"), T, [ORIGIN, zone("20026.25", "20030", "T-")], gp)
+    r = evaluate_geometry(cand("LONG"), T, [ORIGIN, zone("20026.25", "20030", "T-")], gp, CLEAR)
     assert r.planned_entry_price == D("20010.50") and r.planned_target_price == D("20025.75")
     assert "RR_BELOW_MINIMUM" in r.rejection_reasons
     literals = {
@@ -278,3 +303,33 @@ def test_all_numeric_trading_parameters_come_from_the_specification():
         "trade_geometry.parameters.exact_tie_action",
         "trade_geometry.parameters.minimum_planned_gross_rr",
     } <= invalid
+
+
+# =========================================================================== typed eligibility (D-028)
+
+
+def test_eligibility_is_typed_and_fails_closed():
+    names = ExecutionEligibility.control_names()
+    # Free-form strings, booleans and None are refused outright ("CLEAR" is not ControlState.CLEAR).
+    for bad in ("CLEAR", False, True, None, 0):
+        with pytest.raises(TypeError):
+            ExecutionEligibility(**{**CLEAR.__dict__, "safety_halt": bad})
+    with pytest.raises(TypeError):  # a missing key cannot default to safe
+        ExecutionEligibility(**{n: ControlState.CLEAR for n in names[1:]})
+    # Mapping input: missing or wrongly typed -> UNKNOWN, which blocks.
+    partial = ExecutionEligibility.from_mapping({n: ControlState.CLEAR for n in names if n != "data_valid"} | {"news_blackout": "CLEAR"})
+    assert not partial.permits_entry
+    assert partial.blocking_reasons() == ("UNKNOWN:NEWS_BLACKOUT", "UNKNOWN:DATA_VALID")
+    with pytest.raises(KeyError):
+        ExecutionEligibility.from_mapping({"is_safe": ControlState.CLEAR})
+    assert ExecutionEligibility.from_mapping({}).blocking_reasons() == tuple(f"UNKNOWN:{n.upper()}" for n in names)
+    r = geo(cand("LONG"), zone("20026.25", "20030", "T-"), eligibility=partial)
+    assert not r.qualified and "UNKNOWN:DATA_VALID" in r.rejection_reasons
+    with pytest.raises(TypeError):  # the old free-form list can no longer be passed
+        evaluate_geometry(cand("LONG"), T, [ORIGIN], GP, ("NEWS",))
+
+
+def test_execution_eligibility_integration_blocks_execution_until_done():
+    assert SPEC["execution_eligibility_integration"]["status"] == "REQUIRED_BEFORE_EXECUTABLE"
+    assert SPEC["execution_eligibility_integration"]["controls"] == list(ExecutionEligibility.control_names())
+    assert "execution_eligibility_integration.status" in check_rule_freeze(SPEC).unresolved_paths()

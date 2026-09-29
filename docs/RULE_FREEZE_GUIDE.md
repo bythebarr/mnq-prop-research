@@ -22,6 +22,10 @@ Formatting rules for answers in the YAML file:
 * Put clock times in quotes: `"09:30"` (unquoted YAML times can be misread).
 * Write `NONE` or `NOT_APPLICABLE` when a field deliberately does not apply.
   Never leave it empty. Empty, `null` and `TBD` all count as unanswered.
+* An explicit "not yet" marker also counts as unanswered and blocks
+  execution: `REQUIRED_BEFORE_EXECUTABLE`, or any all-capitals word starting
+  with `UNRESOLVED_` (for example `UNRESOLVED_EVIDENCE_DERIVED`). Use one when
+  the owner has deliberately decided that an answer must wait.
 * Long answers can use YAML's folded style (`>`) over several lines.
 
 Checking progress at any time:
@@ -662,6 +666,75 @@ slippage."
 **Illustrative only:** "Structural invalidation, or the end of the trading
 window."
 
+### `entry_order_lifecycle.parameters`
+*(Added in Round 13.)*
+**Question:** Which order type, submission delay, maximum working time,
+acknowledgement timeout and research quantity does the simulated entry order
+use?
+**Illustrative only:** `entry_order_max_working_seconds: "2.000"`.
+
+### `entry_order_lifecycle.research_quantity_labels`
+*(Added in Round 13.)*
+**Question:** How is the research quantity labelled so that nobody mistakes
+it for deployment sizing?
+**Illustrative only:** `[RESEARCH_QUANTITY_ONLY, NOT_DEPLOYMENT_SIZING]`.
+
+### `entry_order_lifecycle.creation`
+*(Added in Round 13.)*
+**Question:** When is the entry order created and when is it submitted?
+**Illustrative only:** "Created at the decision time, submitted exactly
+1.000 s later."
+
+### `entry_order_lifecycle.submission_recheck`
+*(Added in Round 13.)*
+**Question:** What must be re-verified at the moment of submission, and what
+happens if anything is not positively clear?
+**Illustrative only:** "Every eligibility control. Otherwise do not submit;
+terminal with the exact reason."
+
+### `entry_order_lifecycle.tracked_timestamps`
+*(Added in Round 13.)*
+**Question:** Which moments in the order's life must be recorded?
+**Illustrative only:** "Created, submitted, acknowledged, first and final
+fill, cancel requested and confirmed, final state."
+
+### `entry_order_lifecycle.outcomes`
+*(Added in Round 13.)*
+**Question:** What happens after a full fill, a partial fill, no fill, a
+rejection, or an unknown order state?
+**Illustrative only:** "Partial fill: keep it, cancel the rest, protect it,
+halt the day."
+
+### `entry_order_lifecycle.cancellation_race`
+*(Added in Round 13.)*
+**Question:** What if a fill arrives after the cancellation was requested?
+**Illustrative only:** "It is real exposure: protect it and reconcile."
+
+### `entry_order_lifecycle.protective_order_dependency`
+*(Added in Round 13.)*
+**Question:** What must exist before any live or paper order may be sent?
+**Illustrative only:** "A protective-order layer. Until then: prohibited."
+
+### `execution_eligibility_integration.status`
+*(Added in D-028.)*
+**Question:** Have the news, safety, session, data and position controls
+been integrated so that they feed typed states to the geometry and entry
+code?
+**Why it matters:** Until they are, nothing can prove that an entry is safe,
+so execution stays blocked (`REQUIRED_BEFORE_EXECUTABLE`).
+**Illustrative only:** "Integrated and verified by tests on real calendars."
+
+### `execution_eligibility_integration.requirement`
+*(Added in D-028.)*
+**Question:** What exactly must each control deliver?
+**Illustrative only:** "A typed CLEAR / BLOCKED / UNKNOWN; only CLEAR
+permits an entry."
+
+### `execution_eligibility_integration.controls`
+*(Added in D-028.)*
+**Question:** Which controls make up the eligibility snapshot?
+**Illustrative only:** "News blackout, news protection, safety halt, …"
+
 ## 11. Invalidation, stop, target and position management
 
 ### `structural_invalidation.definition`
@@ -694,10 +767,18 @@ buffer."
 the prop-account drawdown.
 **Illustrative only:** `25`.
 
-### `stop_placement.trade_skipped_if_outside_limits`
+### `stop_placement.trade_skipped_if_outside_stop_limits`
+*(Renamed in Round 13.)*
 **Question:** If the computed stop falls outside the minimum or maximum, is
 the trade skipped, or is the stop clipped?
 **Illustrative only:** "Skipped."
+
+### `stop_placement.stop_validity_rules`
+*(Added in Round 13.)*
+**Question:** Which checks must the structural stop pass, given that it is
+never resized?
+**Illustrative only:** "Positive, tick-aligned, on the protective side, from
+the originating zone."
 
 ### `target_placement.method`
 **Question:** How is the profit target determined?
@@ -740,7 +821,7 @@ the trade skipped, or is the stop clipped?
 ### `trade_geometry.candidate_selection`
 *(Added in Round 12.)*
 **Question:** How is one candidate chosen among several same-direction ones, and what happens on an exact tie?
-**Illustrative only:** "Rank by R:R, then risk, then reward. A tie means no trade."
+**Illustrative only:** "Rank by R:R, then risk. A tie means no trade."
 
 ### `trade_geometry.selected_candidate_record`
 *(Added in Round 12.)*
@@ -782,7 +863,9 @@ dollars, or as a percentage of the balance named in the next question.
 against the prop firm's drawdown limit.
 **Illustrative only:** `"USD 100"`.
 
-### `position_management.risk_reference_balance`
+### `position_management.position_sizing_balance_basis`
+*(Renamed in Round 13; recorded as `UNRESOLVED_PENDING_PROP_RULE_MODEL`.
+The nominal account size is not risk capital.)*
 **Question:** If risk is a percentage, a percentage of what? Starting
 balance, current balance, or the remaining distance to the drawdown limit?
 If risk is in fixed dollars, answer `NOT_APPLICABLE`.

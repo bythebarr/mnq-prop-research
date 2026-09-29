@@ -173,6 +173,19 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "order_type.entry_price_rule",
     "order_validity.time_in_force",
     "order_validity.cancellation_conditions",
+    # Entry order lifecycle (Round 13)
+    "entry_order_lifecycle.parameters",
+    "entry_order_lifecycle.research_quantity_labels",
+    "entry_order_lifecycle.creation",
+    "entry_order_lifecycle.submission_recheck",
+    "entry_order_lifecycle.tracked_timestamps",
+    "entry_order_lifecycle.outcomes",
+    "entry_order_lifecycle.cancellation_race",
+    "entry_order_lifecycle.protective_order_dependency",
+    # Execution eligibility integration (D-028)
+    "execution_eligibility_integration.status",
+    "execution_eligibility_integration.requirement",
+    "execution_eligibility_integration.controls",
     # Invalidation, stop, target
     "structural_invalidation.definition",
     "structural_invalidation.action",
@@ -180,7 +193,8 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "stop_placement.buffer_ticks",
     "stop_placement.minimum_stop_points",
     "stop_placement.maximum_stop_points",
-    "stop_placement.trade_skipped_if_outside_limits",
+    "stop_placement.trade_skipped_if_outside_stop_limits",
+    "stop_placement.stop_validity_rules",
     "target_placement.method",
     "target_placement.parameters",
     # Position management
@@ -200,7 +214,7 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "position_management.trailing_stop_rule",
     "position_management.time_based_exit",
     "position_management.risk_per_trade",
-    "position_management.risk_reference_balance",
+    "position_management.position_sizing_balance_basis",
     "position_management.contract_rounding",
     "position_management.below_one_contract_action",
     "position_management.max_contracts_per_trade",
@@ -366,12 +380,21 @@ class RuleFreezeReport:
         return "\n".join(lines).rstrip()
 
 
+# Explicit "not yet" markers the rule owner may record instead of TBD. They are
+# answers about status, not rules, so they block execution exactly like TBD.
+UNRESOLVED_MARKERS: frozenset[str] = frozenset({"TBD", "REQUIRED_BEFORE_EXECUTABLE"})
+_UNRESOLVED_PREFIX = "UNRESOLVED_"
+
+
 def is_unresolved(value: Any) -> bool:
-    """True if a value is an unanswered placeholder (None, TBD, empty)."""
+    """True if a value is an unanswered placeholder (None, TBD, empty, or an explicit unresolved marker)."""
     if value is None:
         return True
     if isinstance(value, str):
-        return value.strip() == "" or value.strip().upper() == "TBD"
+        text = value.strip()
+        if text.upper() in UNRESOLVED_MARKERS or text == "":
+            return True
+        return text.startswith(_UNRESOLVED_PREFIX) and text.replace("_", "").isalnum() and text.isupper()
     if isinstance(value, (list, dict)):
         return len(value) == 0
     return False
@@ -484,6 +507,8 @@ def check_rule_freeze(spec: Any, spec_path: str | Path | None = None) -> RuleFre
     for problem in _direction_problems(spec):
         add(problem)
     for problem in _trade_geometry_problems(spec):
+        add(problem)
+    for problem in _entry_order_problems(spec):
         add(problem)
 
     # 3. Any other unanswered value anywhere (e.g. nested TBDs, extra fields)
@@ -726,3 +751,53 @@ def require_executable(spec: dict[str, Any], spec_path: str | Path | None = None
     if not report.is_executable:
         raise RuleFreezeNotExecutableError(report)
     return report
+
+
+def _entry_order_problems(spec: dict[str, Any]) -> list[RuleFreezeProblem]:
+    """Round 13 / D-028 values that B0 code implements exactly; anything else is INVALID."""
+    from decimal import Decimal, InvalidOperation
+
+    from mnq_research.eligibility import ExecutionEligibility
+    from mnq_research.entry_order import (
+        ENTRY_ORDER_TYPE,
+        LIVE_OR_PAPER_SUBMISSION_STATUS,
+        PROHIBITED_ENTRY_ORDER_TYPES,
+        RESEARCH_QUANTITY_LABELS,
+    )
+
+    problems: list[RuleFreezeProblem] = []
+    expectations = (
+        ("order_type.entry_order_type", ENTRY_ORDER_TYPE),
+        ("order_type.prohibited_entry_order_types", list(PROHIBITED_ENTRY_ORDER_TYPES)),
+        ("entry_order_lifecycle.parameters.entry_order_type", ENTRY_ORDER_TYPE),
+        ("entry_order_lifecycle.parameters.research_quantity_contracts", 1),
+        ("entry_order_lifecycle.research_quantity_labels", list(RESEARCH_QUANTITY_LABELS)),
+        ("entry_order_lifecycle.protective_order_dependency.live_or_paper_order_submission", LIVE_OR_PAPER_SUBMISSION_STATUS),
+        ("execution_eligibility_integration.controls", list(ExecutionEligibility.control_names())),
+        ("stop_placement.minimum_stop_points", "NOT_APPLICABLE"),
+        ("stop_placement.maximum_stop_points", "NOT_APPLICABLE"),
+        ("stop_placement.trade_skipped_if_outside_stop_limits", False),
+    )
+    for path, expected in expectations:
+        value = get_path(spec, path)
+        if value is _MISSING or is_unresolved(value):
+            continue  # reported as missing/unresolved elsewhere
+        if value != expected or type(value) is not type(expected):
+            problems.append(RuleFreezeProblem(path, "INVALID", f"B0 implements only {expected!r}, got {value!r}"))
+    params = get_path(spec, "entry_order_lifecycle.parameters")
+    if isinstance(params, dict):
+        for name in ("signal_to_order_delay_seconds", "entry_order_max_working_seconds", "acknowledgement_timeout_seconds"):
+            path = f"entry_order_lifecycle.parameters.{name}"
+            value = params.get(name, _MISSING)
+            if value is _MISSING:
+                problems.append(RuleFreezeProblem(path, "MISSING", "required parameter is missing"))
+                continue
+            if is_unresolved(value):
+                continue
+            try:
+                ok = isinstance(value, str) and Decimal(value).is_finite() and Decimal(value) > 0
+            except InvalidOperation:
+                ok = False
+            if not ok:
+                problems.append(RuleFreezeProblem(path, "INVALID", f"must be a quoted positive number of seconds, got {value!r}"))
+    return problems

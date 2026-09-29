@@ -44,8 +44,9 @@ class CandidateStatus(str, Enum):
     NON_EXECUTABLE_DAILY_HALT = "NON_EXECUTABLE_DAILY_HALT"
     USED_BY_ENTRY_CANDIDATE = "USED_BY_ENTRY_CANDIDATE"
     NON_EXECUTABLE_GEOMETRY = "NON_EXECUTABLE_GEOMETRY"  # failed room-to-target / eligibility (Round 12)
-    NON_EXECUTABLE_NOT_SELECTED = "NON_EXECUTABLE_NOT_SELECTED"  # lower-ranked same-direction candidate
-    NON_EXECUTABLE_GEOMETRY_TIE = "NON_EXECUTABLE_GEOMETRY_TIE"  # exact three-criterion tie
+    # D-028: lower-ranked same-direction candidate; terminal, never reused.
+    NOT_SELECTED_BY_GEOMETRY_RANKING = "NOT_SELECTED_BY_GEOMETRY_RANKING"
+    NON_EXECUTABLE_GEOMETRY_TIE = "NON_EXECUTABLE_GEOMETRY_TIE"  # exact two-criterion tie
 
 
 class ResolutionResult(str, Enum):

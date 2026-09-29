@@ -544,5 +544,105 @@ tests were fixed, and all mutations are now caught.
 4. **Target zones must already exist at the decision time.** For example,
    an opening-range zone can be a target only from 09:45.
 **Reversible:** yes.
-**Status:** Rules CONFIRMED by the owner (Round 12 and D-027). Items 1–4
-PENDING.
+**Status:** CONFIRMED by the owner (Round 12, D-027 and the D-028
+confirmations, 2026-09-29):
+1. The ranking is exactly `[highest_planned_gross_rr,
+   smallest_planned_risk_points]`, then no trade. It is not reordered to
+   prefer greater reward. `exact_tie_action` is
+   `NO_TRADE_SAME_DIRECTION_GEOMETRY_TIE`.
+2. Non-selected candidates are terminal and non-executable, with the reason
+   `NOT_SELECTED_BY_GEOMETRY_RANKING`. They cannot be reused through the same
+   confirmation, acceptance, attempt or zone identity.
+3. `execution_eligibility_integration.status: REQUIRED_BEFORE_EXECUTABLE`.
+   News, safety, session and missing-data controls must produce typed states
+   that geometry and entry code consume directly. Unknown fails closed; no
+   free-form string, missing key or default false may mean "safe".
+4. Target-zone existence at the decision time is confirmed.
+
+Implementation: the ranking and tie action were changed in the spec, the
+code and the validator. The status `NON_EXECUTABLE_NOT_SELECTED` was renamed
+`NOT_SELECTED_BY_GEOMETRY_RANKING`. The new module `eligibility.py` provides
+`ExecutionEligibility` with `ControlState`, and `evaluate_geometry` now
+requires it (there is no default). The entry-order book consumes the
+identity of every evaluated candidate (D-029). `is_unresolved` now also
+treats `REQUIRED_BEFORE_EXECUTABLE` and all-capitals `UNRESOLVED_…` markers
+as unanswered.
+
+## D-029 — Entry order lifecycle (Round 13)
+**Decision:** The entry is a **market** order, simulated only
+(`src/mnq_research/entry_order.py`, plain English in
+`docs/ORDER_LIFECYCLE.md`).
+- **Creation and submission:** the order is created at the decision time and
+  submitted exactly 1.000 s later. It is submitted only if every eligibility
+  control is CLEAR, the 11:30 cutoff hasn't been reached, and no news
+  boundary has been reached. Otherwise it is terminal
+  `NOT_SUBMITTED_INELIGIBLE` with the exact reasons.
+- **Deadline:** the earliest of submission + 2.000 s, 11:30, a news boundary,
+  or an event-driven invalidation (safety halt, loss of reliable state,
+  contract/session invalidation). The cancellation request is stamped at the
+  deadline itself. There is no extend, replace, convert or chase.
+- **Outcomes:**
+  - Full fill.
+  - Partial fill: the fill is kept, the remainder cancelled, and the day
+    halted.
+  - No fill: the day is halted.
+  - Rejection: no retry, and the day is halted.
+  - Unknown state: reconcile, never resubmit, raise a critical alert, halt.
+- **Exposure:** every fill is real exposure, including one that races a
+  cancellation or arrives after the order is final. A fill creates a
+  REQUIRED protection task with the confirmed quantity and the frozen stop
+  and target. No protective order is placed.
+- **Performance:** actual R, slippage and latency use the actual fills. All
+  values are exact fractions.
+- **Research quantity:** 1 contract, labelled `RESEARCH_QUANTITY_ONLY` /
+  `NOT_DEPLOYMENT_SIZING`.
+- **Stops:** there is no minimum or maximum stop filter. Stop validity checks
+  refuse stops from the wrong zone and stops on the wrong side, and never
+  resize them.
+- **Unresolved on purpose:** `risk_per_trade` (UNRESOLVED_EVIDENCE_DERIVED),
+  `position_sizing_balance_basis` (UNRESOLVED_PENDING_PROP_RULE_MODEL) and
+  `protective_order_layer_status` (REQUIRED_BEFORE_EXECUTABLE).
+  `live_or_paper_order_submission` is `prohibited`, and the validator
+  rejects any other value.
+- **Renamed fields:** `stop_placement.trade_skipped_if_outside_limits` became
+  `…_outside_stop_limits`, and `position_management.risk_reference_balance`
+  became `position_sizing_balance_basis`.
+
+**Testing:** 25 lifecycle tests (the owner's 24, plus parameter provenance)
+and 3 D-028 tests. In the mutation checks, 3 of 30 mutations first survived:
+- a fill with no acknowledgement;
+- a rejection after a fill;
+- order creation at the wrong time.
+
+Tests were added for each, and all 30 are now caught.
+
+**Pending owner confirmation:**
+1. **Acknowledgement timeout.** It is recorded as its own parameter
+   (`acknowledgement_timeout_seconds: "2.000"`), measured from submission, so
+   it coincides with the working deadline. A fill counts as proof that the
+   order reached the market, so a filled but unacknowledged order is not
+   "unknown". Is that right?
+2. **Loss of reliable state.** Besides ending the working time, it is also
+   treated as `ENTRY_ORDER_STATE_UNKNOWN` (reconcile, alert, halt).
+3. **Contradictory reports** (overfill, fill after the final state, a
+   rejection after a fill, a reconciled position that differs from the
+   recorded fills) become `ENTRY_ORDER_STATE_UNKNOWN`. That outcome is never
+   later replaced by a cleaner one.
+4. **Halting.** A full fill does not halt the day. The open position blocks
+   new entries, through `no_open_position`, until trade management exists.
+   A `NOT_SUBMITTED_INELIGIBLE` order does not halt the day either (your
+   rule said only "terminal").
+5. **Stop beyond the actual fill.** If the actual fill is at or beyond the
+   frozen stop, the stop is kept unchanged and the protection task is
+   flagged `stop_protective_of_actual_entry: false`. What should happen next
+   (an immediate flatten?) belongs to the protection and trade-management
+   round.
+6. **Floor and skip.** `contract_rounding` and `below_one_contract_action`
+   stay TBD, even though your later formula says floor and skip. They should
+   be confirmed together with `risk_per_trade`.
+7. **`entry_trigger.long_trigger` / `short_trigger`** are still TBD. Rounds
+   11–13 seem to answer them ("a SELECTED_ENTRY_CANDIDATE → market order at
+   decision + 1.000 s"), but I have not filled them in without your
+   confirmation.
+**Reversible:** yes.
+**Status:** Rules CONFIRMED by the owner (Round 13). Items 1–7 PENDING.

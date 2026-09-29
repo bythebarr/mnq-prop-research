@@ -1141,13 +1141,77 @@ entry_trigger:
 
 # --- Order type ----------------------------------------------------------------------------------------------------
 order_type:
-  entry_order_type: TBD
-  entry_price_rule: TBD
+  # Round 13 (rule owner, 2026-09-29); full rules in entry_order_lifecycle.
+  entry_order_type: MARKET
+  entry_price_rule: >
+    No price limit: a market order submitted 1.000 s after the decision time.
+    The planned entry (confirmation close +/- 1 tick) is a planning reference
+    only; the actual fill is recorded and used for all performance and R.
+  prohibited_entry_order_types: [MARKET_IF_TOUCHED, LIMIT, STOP_LIMIT, STOP_MARKET]
 
 # --- Order validity and cancellation -------------------------------------------------------------------------------
 order_validity:
-  time_in_force: TBD
-  cancellation_conditions: TBD
+  # Round 13 (rule owner, 2026-09-29).
+  time_in_force: >
+    At most 2.000 s from submission (entry_order_max_working_seconds). The
+    deadline is the EARLIEST of: submission + 2.000 s; 11:30:00 New York; a
+    news entry-protection or blackout boundary; a safety halt; loss of
+    reliable state; contract or session invalidation.
+  cancellation_conditions: >
+    At the deadline any unfilled remainder is cancelled. Never extended,
+    replaced, converted to another order type or chased.
+
+# --- Entry order lifecycle (added Round 13) -------------------------------------------------------------------
+# Implemented in src/mnq_research/entry_order.py; plain English in docs/ORDER_LIFECYCLE.md.
+# SIMULATION STATE MACHINE ONLY: no broker, platform, network, live or paper submission.
+entry_order_lifecycle:
+  parameters:   # candidate B0 values, not optimised
+    entry_order_type: MARKET
+    signal_to_order_delay_seconds: "1.000"   # must agree with decision_clock.signal_to_order_delay
+    entry_order_max_working_seconds: "2.000"
+    acknowledgement_timeout_seconds: "2.000"   # measured from submission (D-029 item to confirm)
+    research_quantity_contracts: 1
+  research_quantity_labels: [RESEARCH_QUANTITY_ONLY, NOT_DEPLOYMENT_SIZING]
+  creation: >
+    One entry order per SELECTED_ENTRY_CANDIDATE, created at the decision time,
+    submitted exactly 1.000 s later. No fill can occur before submission.
+  submission_recheck: >
+    At the submission moment every control in execution_eligibility_integration
+    is re-verified: before 11:30:00 New York; no news entry protection or
+    blackout; no safety or directional-conflict halt; no daily entry halt; data
+    valid; candidate not expired or used; no open position; no working entry
+    order; contract and zones current. Any control not positively CLEAR ->
+    no submission; the order is terminal NOT_SUBMITTED_INELIGIBLE with the
+    exact reasons, and the candidate can never be reused.
+  deadline: see order_validity.time_in_force; the remainder is cancelled at the deadline.
+  tracked_timestamps: [order_created, order_submitted, broker_acknowledged, first_fill, final_fill, cancellation_requested, cancellation_confirmed, final_order_state]
+  outcomes:
+    ENTRY_FULLY_FILLED: >
+      Record average fill, each individual fill, quantity, slippage versus the
+      confirmation close and versus the planned entry, and latency from
+      submission to first and to final fill. Actual R uses the actual fill.
+    ENTRY_PARTIALLY_FILLED: >
+      Accept the filled quantity; cancel the remainder; never top up; stop and
+      target are not recalculated; protect immediately; halt new entries for
+      the trading date. Risk uses the actual average fill, the actual quantity
+      and the frozen structural stop.
+    ENTRY_NOT_FILLED: No position; candidate terminal and never reused; halt new entries for the trading date.
+    ENTRY_ORDER_REJECTED: No retry and no order-type change; candidate terminal; halt; record the rejection code and message.
+    ENTRY_ORDER_STATE_UNKNOWN: >
+      No acknowledgement (and no fill) within 2.000 s of submission, loss of
+      reliable state, or contradictory reports. Never resubmit or replace;
+      query order and position; no exposure increase; protect any confirmed
+      position; critical alert; halt new entries for the trading date. An
+      unknown state is never assumed to be a rejection.
+    NOT_SUBMITTED_INELIGIBLE: Terminal; exact reasons recorded; candidate never reused.
+  cancellation_race: >
+    A fill arriving after the cancellation request is real exposure: protect
+    it, reconcile order and position, and make no new entry that day.
+  audit: Every outcome, including every failure, produces a deterministic audit record with its reasons and timestamps.
+  protective_order_dependency:
+    simulated_fill_creates: REQUIRED_PROTECTION_TASK   # quantity = confirmed filled quantity; frozen stop and target
+    protective_order_layer_status: REQUIRED_BEFORE_EXECUTABLE
+    live_or_paper_order_submission: prohibited
 
 # --- Structural invalidation ------------------------------------------------------------------------------------------
 structural_invalidation:
@@ -1164,9 +1228,15 @@ stop_placement:
     Not used: confirmation/retest bar extremes, fixed dollar, fixed point,
     percentage or ATR stops (only via the rule-change process).
   buffer_ticks: 1
-  minimum_stop_points: TBD
-  maximum_stop_points: TBD
-  trade_skipped_if_outside_limits: TBD
+  # Round 13 (rule owner, 2026-09-29): no fixed stop-size filter in B0.
+  minimum_stop_points: NOT_APPLICABLE
+  maximum_stop_points: NOT_APPLICABLE
+  trade_skipped_if_outside_stop_limits: false
+  stop_validity_rules:
+    - Positive, finite and tick-aligned.
+    - On the protective side of the planned entry and of the actual entry.
+    - Derived from the correct originating zone (long L - 0.25, short U + 0.25).
+    - Never resized, compressed or recalculated to fit a quantity or dollar risk.
 
 # --- Target placement ---------------------------------------------------------------------------------------------------
 target_placement:
@@ -1186,8 +1256,9 @@ trade_geometry:
     structural_invalidation_buffer_ticks: 1
     target_buffer_ticks: 1
     minimum_planned_gross_rr: "1.50"   # quoted: parsed as an exact decimal
-    candidate_ranking: [highest_planned_gross_rr, smallest_planned_risk_points, greatest_planned_reward_points]
-    exact_tie_action: NO_TRADE
+    # D-028: exactly two criteria (a third, greatest reward, could never break a tie).
+    candidate_ranking: [highest_planned_gross_rr, smallest_planned_risk_points]
+    exact_tie_action: NO_TRADE_SAME_DIRECTION_GEOMETRY_TIE
   planned_entry_reference: >
     Long: confirmation close + 0.25; short: confirmation close - 0.25, rounded
     adversely to the tick. A deterministic planning reference for pre-trade
@@ -1228,17 +1299,34 @@ trade_geometry:
   candidate_selection: >
     One room-qualified candidate -> select it. Several same-direction
     room-qualified candidates at one decision time -> rank by highest
-    planned_gross_rr, then smallest planned_risk_points, then greatest
-    planned_reward_points, using only information available then and exact
-    representations. A unique best is selected. An exact three-criterion tie
-    selects none: NO_TRADE_SAME_DIRECTION_GEOMETRY_TIE; never broken by
+    planned_gross_rr, then smallest planned_risk_points (D-028: nothing
+    else; never reordered to prefer greater reward), using only information
+    available then and exact representations. A unique best is selected. An
+    exact tie on both criteria selects none:
+    NO_TRADE_SAME_DIRECTION_GEOMETRY_TIE; never broken by
     processing order, zone name, level type, candidate id, dictionary or file
     order, or hypothetical later performance. The tie blocks only that
     timestamp (no daily halt); all tied confirmations become non-executable and
-    cannot be reused. Lower-ranked candidates are not selected and become
-    non-executable (pending D-028).
+    cannot be reused. Lower-ranked candidates become terminal and
+    non-executable with reason NOT_SELECTED_BY_GEOMETRY_RANKING (D-028); they
+    can never be reused through the same confirmation, acceptance, attempt or
+    zone-version/attempt identity.
   selected_candidate_record: [candidate_id, direction, decision_timestamp, confirmation_timestamp, contract, zone_version_id, attempt_id, acceptance_id, confirmation_id, target_zone_version_id, planned_entry_price, structural_invalidation_price, planned_stop_price, planned_target_price, planned_risk_points, planned_reward_points, planned_gross_rr, selection_rank_values, specification_version, configuration_hash]
-  not_an_order: A SELECTED_ENTRY_CANDIDATE creates no order, quantity or fill in Round 12.
+  not_an_order: A SELECTED_ENTRY_CANDIDATE creates no order, quantity or fill in Round 12; Round 13 (entry_order_lifecycle) may create one simulated entry order from it.
+
+# --- Execution eligibility integration (added D-028) ----------------------------------------------------------
+# Interface: src/mnq_research/eligibility.py (ExecutionEligibility, ControlState).
+execution_eligibility_integration:
+  status: REQUIRED_BEFORE_EXECUTABLE   # blocks execution until the producers below are integrated and verified
+  requirement: >
+    News, safety, session, missing-data, directional-conflict, daily-halt,
+    candidate, position, working-order, contract and zone controls must each
+    produce a typed state (CLEAR / BLOCKED / UNKNOWN) that the geometry and
+    entry code consume directly. Only CLEAR, verified for every control,
+    permits an entry. Unknown state fails closed. Free-form strings, missing
+    keys, null values or default false values can never mean "safe to trade".
+  controls: [news_blackout, news_entry_protection, safety_halt, directional_conflict_halt, daily_entry_halt, session_valid, data_valid, candidate_current, no_open_position, no_working_entry_order, contract_current, zones_current]
+  consumers: [trade_geometry (decision time), entry_order_lifecycle (submission recheck)]
 
 # --- Position management ---------------------------------------------------------------------------------------------------
 position_management:
@@ -1248,10 +1336,17 @@ position_management:
   breakeven_rule: TBD
   trailing_stop_rule: TBD
   time_based_exit: TBD
-  risk_per_trade: TBD
-  risk_reference_balance: TBD
-  contract_rounding: TBD
-  below_one_contract_action: TBD
+  # Round 13 (rule owner, 2026-09-29): deliberately unresolved until evidence exists.
+  risk_per_trade:
+    status: UNRESOLVED_EVIDENCE_DERIVED
+    later_formula: >
+      risk_per_contract_usd = structural stop distance in points x 2.00 USD
+      per point + modelled slippage and costs; contracts = floor(allowed risk
+      USD / risk_per_contract_usd); zero contracts -> skip the trade. The stop
+      is never compressed to make a contract fit.
+  position_sizing_balance_basis: UNRESOLVED_PENDING_PROP_RULE_MODEL   # nominal 50,000 USD account size is NOT risk capital
+  contract_rounding: TBD   # later_formula says floor; confirm once risk_per_trade is resolved
+  below_one_contract_action: TBD   # later_formula says skip; confirm once risk_per_trade is resolved
   max_contracts_per_trade: TBD
 
 # --- Maximum trades per day -------------------------------------------------------------------------------------------------

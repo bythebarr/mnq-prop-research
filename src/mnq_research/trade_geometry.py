@@ -10,8 +10,9 @@ computes a deterministic *planning* geometry:
     planned gross R:R = reward points / risk points  (>= 1.50 to qualify)
 
 and selects at most one same-direction candidate per decision time
-(highest R:R, then smallest risk, then greatest reward; an exact tie means
-no trade at that timestamp).
+(highest R:R, then smallest risk; an exact tie on both means no trade at
+that timestamp). Eligibility controls arrive as a typed, fail-closed
+``ExecutionEligibility`` snapshot (D-028), never as free-form strings.
 
 It submits NO order, computes NO position size, simulates NO fill and applies
 NO costs. The planned entry is a planning reference only; actual performance
@@ -35,11 +36,14 @@ import pandas as pd
 
 from mnq_research.confirmation import Side
 from mnq_research.direction import CandidateStatus, DailyDirectionBook, DirectionCandidate
+from mnq_research.eligibility import ExecutionEligibility
 from mnq_research.level_states import ZoneTracker
 from mnq_research.structural_levels import NEW_ENTRY_CUTOFF_NY, NEW_ENTRY_START_NY, NEW_YORK, TICK, ny_time
 
-RANKING_CRITERIA = ("highest_planned_gross_rr", "smallest_planned_risk_points", "greatest_planned_reward_points")
-EXACT_TIE_ACTION = "NO_TRADE"
+# D-028: exactly two criteria. A third ("greatest reward") could never break a tie,
+# because equal R:R and equal risk imply equal reward.
+RANKING_CRITERIA = ("highest_planned_gross_rr", "smallest_planned_risk_points")
+EXACT_TIE_ACTION = "NO_TRADE_SAME_DIRECTION_GEOMETRY_TIE"
 COST_STATUS = "UNRESOLVED_UNTIL_COST_MODEL_FROZEN"
 
 
@@ -117,8 +121,8 @@ class GeometryResult:
 
     @property
     def rank_key(self) -> tuple:
-        """Smaller is better: highest R:R, then smallest risk, then greatest reward."""
-        return (-self.planned_gross_rr, self.planned_risk_points, -self.planned_reward_points)
+        """Smaller is better: highest R:R, then smallest risk (D-028)."""
+        return (-self.planned_gross_rr, self.planned_risk_points)
 
 
 def _eligible_target_zones(candidate: DirectionCandidate, decision_time: pd.Timestamp, zones: Iterable[ZoneTracker]) -> list[ZoneTracker]:
@@ -139,7 +143,7 @@ def evaluate_geometry(
     decision_time_utc: pd.Timestamp,
     active_zones: Iterable[ZoneTracker],
     params: GeometryParams,
-    blocking_conditions: Iterable[str] = (),
+    eligibility: ExecutionEligibility,
 ) -> GeometryResult:
     """Planned entry, stop, target and R:R for one candidate, with every rejection reason."""
     reasons: list[str] = []
@@ -148,7 +152,9 @@ def evaluate_geometry(
     local = decision_time_utc.tz_convert(NEW_YORK)
     if not ny_time(local.date(), NEW_ENTRY_START_NY) <= decision_time_utc < ny_time(local.date(), NEW_ENTRY_CUTOFF_NY):
         reasons.append("DECISION_TIME_OUTSIDE_ENTRY_WINDOW")
-    reasons += [f"BLOCKED:{condition}" for condition in blocking_conditions]
+    if not isinstance(eligibility, ExecutionEligibility):
+        raise TypeError("eligibility must be an ExecutionEligibility snapshot (D-028: no free-form or missing state)")
+    reasons += list(eligibility.blocking_reasons())
 
     result = GeometryResult(candidate, decision_time_utc, ())
     close, lo, hi = candidate.confirmation_close, candidate.origin_lower_boundary, candidate.origin_upper_boundary
@@ -212,6 +218,9 @@ class SelectedEntryCandidate:
     acceptance_id: str
     confirmation_id: str
     target_zone_version_id: str
+    confirmation_close: Decimal
+    origin_lower_boundary: Decimal
+    origin_upper_boundary: Decimal
     planned_entry_price: Decimal
     structural_invalidation_price: Decimal
     planned_stop_price: Decimal
@@ -251,7 +260,7 @@ def select_candidate(decision_time_utc: pd.Timestamp, evaluated: Iterable[Geomet
     best = [r for r in qualified if r.rank_key == best_key]
     for r in qualified:
         if r not in best:
-            r.candidate.status = CandidateStatus.NON_EXECUTABLE_NOT_SELECTED
+            r.candidate.status = CandidateStatus.NOT_SELECTED_BY_GEOMETRY_RANKING
     if len(best) > 1:
         for r in best:
             r.candidate.status = CandidateStatus.NON_EXECUTABLE_GEOMETRY_TIE
@@ -270,6 +279,9 @@ def select_candidate(decision_time_utc: pd.Timestamp, evaluated: Iterable[Geomet
         acceptance_id=c.acceptance_id,
         confirmation_id=c.confirmation_id,
         target_zone_version_id=chosen.target_zone_version_id,
+        confirmation_close=c.confirmation_close,
+        origin_lower_boundary=c.origin_lower_boundary,
+        origin_upper_boundary=c.origin_upper_boundary,
         planned_entry_price=chosen.planned_entry_price,
         structural_invalidation_price=chosen.structural_invalidation_price,
         planned_stop_price=chosen.planned_stop_price,
@@ -280,7 +292,6 @@ def select_candidate(decision_time_utc: pd.Timestamp, evaluated: Iterable[Geomet
         selection_rank_values=(
             ("planned_gross_rr", str(chosen.planned_gross_rr)),
             ("planned_risk_points", str(chosen.planned_risk_points)),
-            ("planned_reward_points", str(chosen.planned_reward_points)),
         ),
         specification_version=params.specification_version,
         configuration_hash=params.configuration_hash,
