@@ -430,7 +430,7 @@ def test_the_captured_estimate_matches_the_specification_record():
     for r in results.values():
         assert r["status"] == "KNOWN" and tuple(r["request"]["symbols"]) == CONTRACTS and r["unresolved_symbols"] == []
         assert r["request"]["stype_in"] == "raw_symbol" and r["client_version"] == "0.87.0" and r["metadata_call_count"] == 4
-    assert all(v is None for v in da["purchase_approval"].values() if v is not False)  # never populated here
+    assert da["purchase_approval"]["estimate_artifact_sha256"] == "0fcae769b903268d0e8f4e9c7e9219053b1b12b85746ddf8b8038da3c047d0a5"
 
 
 def test_final_combined_estimate_is_the_only_one_proposed_and_the_warning_is_gone():
@@ -458,7 +458,7 @@ def test_final_combined_estimate_is_the_only_one_proposed_and_the_warning_is_gon
     manifest = json.loads((ROOT / da["symbol_manifest"]).read_text())
     assert manifest["symbols"] == list(CONTRACTS) == a["request"]["symbols"] == b["request"]["symbols"]
     assert hashlib.sha256(manifest["canonical_json"].encode()).hexdigest() == manifest["sha256_of_canonical_json"]
-    assert all(v is None for k, v in da["purchase_approval"].items() if k != "approved") and da["purchase_approval"]["approved"] is False
+    assert da["purchase_approval"]["estimate_artifact_sha256"] == json.loads((ROOT / da["estimate_artifact"]).read_text())["sha256_of_payload"]
 
 
 def test_definitions_request_starts_at_utc_midnight_and_ohlcv_is_unchanged():

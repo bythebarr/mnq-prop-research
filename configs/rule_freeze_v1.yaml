@@ -1685,13 +1685,24 @@ data_acquisition:
   estimated_charge_usd_combined: "14.263967253268"
   estimated_charge_usd_a_definition: "0.009413488209"   # before credits (credits not exposed by the API)
   estimated_charge_usd_b_ohlcv_1m: "14.254553765059"
-  purchase_approval:   # Round 16B may start only after the owner fills this in
-    approved: false
-    approved_by: null
-    approved_at_utc: null
-    estimate_artifact_sha256: null
-    exact_request_parameters: null
-    maximum_permitted_charge_usd: null
+  purchase_approval:   # Round 16B approval recorded 2026-09-30 by the strategy author (owner instruction)
+    approved: true
+    approved_by: Sam Barr
+    approved_at_utc: "2026-09-30T20:38:06Z"
+    estimate_artifact_sha256: 0fcae769b903268d0e8f4e9c7e9219053b1b12b85746ddf8b8038da3c047d0a5
+    exact_request_parameters:
+      estimate_artifact: outputs/estimates/databento_estimate_0fcae769b903268d.json
+      estimate_file_sha256: d8946d8a42817e618d9739fd4f9a37ca56493157adb60f4e14ddb0cbac2b2414
+      symbol_manifest: outputs/estimates/symbol_manifest_23df44e7c93d365d.json
+      symbols_sha256: 23df44e7c93d365dd059524cad7b75f9c9614479033cd2764ecf99743302798a
+      dataset: GLBX.MDP3
+      stype_in: raw_symbol
+      prices: original unadjusted individual contracts
+      requests:
+        - {schema: definition, start: "2019-05-05T00:00:00Z", end: "2026-09-26T00:00:00Z", end_semantics: EXCLUSIVE}
+        - {schema: ohlcv-1m, start: "2019-05-05T22:00:00Z", end: "2026-09-26T00:00:00Z", end_semantics: EXCLUSIVE}
+      not_permitted: [ohlcv-1s, trades, continuous contracts, additional symbols, other dates, other datasets, other schemas, charge above the maximum, broker connectivity, paper or live orders, signal replay, performance testing]
+    maximum_permitted_charge_usd: "20.00"
   purchase_rule: Any change to the request or any charge above the approved maximum requires a new approval.
 
 # --- Research pipeline readiness (added Round 15) -------------------------------------------------------------

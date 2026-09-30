@@ -26,6 +26,7 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from mnq_research.hashing import hash_object
@@ -187,6 +188,7 @@ def check_stage(spec: dict[str, Any], stage: Stage) -> StageReport:
         report.problems.extend(
             p for p in full.problems if p.kind not in ("STATUS", "APPROVAL") and stage_of(p.path).rank <= stage.rank
         )
+    report.problems.extend(data_presence_problems(spec))
     approvals = spec.get(STAGE_APPROVAL_SECTION)
     for s in _covered(stage):
         digest = stage_hash(spec, s)
@@ -207,6 +209,36 @@ def check_stage(spec: dict[str, Any], stage: Stage) -> StageReport:
                 RuleFreezeProblem(f"{base}.approved_stage_hash", "APPROVAL", f"does not match the current {s.value} stage hash {digest[:12]}...")
             )
     return report
+
+
+VERIFIED_BY_MANIFEST = "VERIFIED_BY_MANIFEST:"
+
+
+def data_presence_problems(spec: dict[str, Any], root: Path | None = None) -> list[RuleFreezeProblem]:
+    """Dynamic check: data readiness can never be claimed when the raw or canonical files are absent or altered."""
+    import hashlib
+    import json
+
+    root = root or Path(__file__).resolve().parents[2]
+    status = get_path(spec, "research_pipeline.historical_data_ingestion_status")
+    if not (isinstance(status, str) and status.startswith(VERIFIED_BY_MANIFEST)):
+        return []  # still an explicit unresolved marker, reported by the field check
+    path = "research_pipeline.historical_data_ingestion_status"
+    manifest_path = root / status[len(VERIFIED_BY_MANIFEST):].strip()
+    if not manifest_path.is_file():
+        return [RuleFreezeProblem(path, "DATA", f"ingestion manifest missing: {manifest_path}")]
+    manifest = json.loads(manifest_path.read_text())
+    problems = []
+    if manifest.get("validation_status") != "PASSED":
+        problems.append(RuleFreezeProblem(path, "DATA", f"ingestion validation status {manifest.get('validation_status')}"))
+    files = [(f["path"], f["sha256"]) for f in manifest.get("raw_inputs", [])] + [(manifest.get("output_path", ""), manifest.get("output_file_sha256", ""))]
+    for rel, digest in files:
+        p = root / rel
+        if not rel or not p.is_file():
+            problems.append(RuleFreezeProblem(path, "DATA", f"DATA_FILE_ABSENT: {rel} (raw data are git-ignored; restore from the recorded Databento job)"))
+        elif hashlib.sha256(p.read_bytes()).hexdigest() != digest:
+            problems.append(RuleFreezeProblem(path, "DATA", f"DATA_FILE_HASH_MISMATCH: {rel}"))
+    return problems
 
 
 def broker_connectivity_permitted(spec: dict[str, Any]) -> bool:

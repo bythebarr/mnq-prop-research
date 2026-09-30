@@ -72,6 +72,8 @@ class MinuteStatus(str, Enum):
     VERIFIED_NO_TRADE_MINUTE = "VERIFIED_NO_TRADE_MINUTE"
     KNOWN_DATA_OUTAGE = "KNOWN_DATA_OUTAGE"
     UNEXPLAINED_MISSING_MINUTE = "UNEXPLAINED_MISSING_MINUTE"
+    # Round 16B: an absent expected minute before calendars and coverage evidence exist. Never VERIFIED_NO_TRADE.
+    UNCLASSIFIED_MISSING_PENDING_CALENDAR = "UNCLASSIFIED_MISSING_PENDING_CALENDAR"
 
 
 class DataLoadError(Exception):

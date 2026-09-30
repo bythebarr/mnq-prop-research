@@ -29,6 +29,7 @@ class MinuteQuality(str, Enum):
     VERIFIED_NO_TRADE_MINUTE = MinuteStatus.VERIFIED_NO_TRADE_MINUTE.value
     KNOWN_DATA_OUTAGE = MinuteStatus.KNOWN_DATA_OUTAGE.value
     UNEXPLAINED_MISSING_MINUTE = MinuteStatus.UNEXPLAINED_MISSING_MINUTE.value
+    UNCLASSIFIED_MISSING_PENDING_CALENDAR = MinuteStatus.UNCLASSIFIED_MISSING_PENDING_CALENDAR.value
     REJECTED_BAD_DATA = "REJECTED_BAD_DATA"  # impossible OHLC, off-tick, wrong contract, conflicting duplicate, zone/session error
 
 
@@ -62,7 +63,8 @@ def open_position_flags(minutes: Iterable[MinuteQuality]) -> tuple[str, ...]:
     return () if decision_interval_state(minutes) is IntervalState.ELIGIBLE else (OPEN_POSITION_DATA_GAP,)
 
 
-GAP_QUALITIES = frozenset({MinuteQuality.KNOWN_DATA_OUTAGE, MinuteQuality.UNEXPLAINED_MISSING_MINUTE, MinuteQuality.REJECTED_BAD_DATA})
+GAP_QUALITIES = frozenset({MinuteQuality.KNOWN_DATA_OUTAGE, MinuteQuality.UNEXPLAINED_MISSING_MINUTE, MinuteQuality.REJECTED_BAD_DATA,
+                           MinuteQuality.UNCLASSIFIED_MISSING_PENDING_CALENDAR})
 
 
 def gap_minutes(minutes: Iterable[MinuteQuality]) -> int:

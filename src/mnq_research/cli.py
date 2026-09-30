@@ -118,6 +118,137 @@ def cmd_data_estimate(args: argparse.Namespace, root: Path) -> int:
     return OK if all(r.status is de.EstimateStatus.KNOWN for r in results) else FOUND_PROBLEMS
 
 
+def cmd_data_acquire(args: argparse.Namespace, root: Path) -> int:
+    """Approved purchase only: fail-closed preflight, then idempotent batch jobs. Key from DATABENTO_API_KEY."""
+    from mnq_research import data_acquisition as da
+    from mnq_research import data_estimate as de
+    from mnq_research.config import load_mapping
+
+    spec = load_mapping(_resolve(args.spec, root))
+    ledger = da.Ledger(root / da.LEDGER_PATH)
+    try:
+        key = de.load_api_key()
+    except de.MissingCredentialError as exc:
+        print(f"PURCHASE_PREFLIGHT_FAILED: {exc}")
+        return FOUND_PROBLEMS
+    import databento
+
+    client = databento.Historical(key)
+    report, approval, requests = da.preflight(spec, root, de.MetadataOnlyClient(client), databento.__version__, key, ledger)
+    out = root / "outputs" / "acquisition"
+    out.mkdir(parents=True, exist_ok=True)
+    stamp = report.checked_utc.replace(":", "").replace("-", "")[:15]
+    (out / f"preflight_{stamp}.json").write_text(json.dumps(de.asdict(report), indent=2, sort_keys=True, default=str) + "\n")
+    print(json.dumps({"preflight_passed": report.passed, "problems": report.problems, "fresh_costs_usd": report.fresh_costs_usd,
+                      "fresh_combined_usd": report.fresh_combined_usd, "checked_utc": report.checked_utc}, indent=2))
+    if not report.passed:
+        print("PURCHASE_PREFLIGHT_FAILED: nothing was submitted")
+        return FOUND_PROBLEMS
+    if args.preflight_only:
+        return OK
+    for request in requests:
+        entry = da.acquire_one(request, requests, client.batch, ledger, root, databento.__version__,
+                               report.fresh_costs_usd[request.schema], timeout_seconds=args.timeout)
+        print(json.dumps({k: entry.get(k) for k in ("status", "job_id", "final_charge_usd", "raw_files")}, indent=2, default=str))
+    return OK
+
+
+def cmd_data_ingest(args: argparse.Namespace, root: Path) -> int:
+    """Validate the approved raw DBN files and derive the canonical dataset (never modifies raw files)."""
+    import datetime as dt
+    import hashlib
+    import subprocess
+
+    from mnq_research import data_acquisition as da
+    from mnq_research import raw_ingest as ri
+    from mnq_research.config import load_mapping
+    from mnq_research.hashing import hash_object
+
+    spec = load_mapping(_resolve(args.spec, root))
+    approval, requests = da.approved_requests(spec, root)
+    ledger = da.Ledger(root / da.LEDGER_PATH)
+    first = dt.date.fromisoformat(str(spec["source_data"]["history_start_date"]))
+    last = dt.date.fromisoformat(str(spec["source_data"]["history_end_date"]))
+    report: dict = {"raw_inputs": [], "validation": {}}
+    frames = {}
+    for request in requests:
+        entry = ledger.entry(da.request_key(request))
+        if not entry or not entry.get("raw_files"):
+            print(f"no downloaded raw files for {request.schema}")
+            return FOUND_PROBLEMS
+        dbn = [f for f in entry["raw_files"] if f["path"].endswith((".dbn.zst", ".dbn"))]
+        if len(dbn) != 1:
+            print(f"expected exactly one DBN file for {request.schema}, found {len(dbn)}")
+            return FOUND_PROBLEMS
+        f = dbn[0]
+        record_count = (entry.get("final_job") or {}).get("record_count")
+        try:
+            meta, df = ri.load_dbn(root / f["path"], f["sha256"])
+        except Exception as exc:  # corrupt / truncated / modified
+            report["validation"][request.schema] = {"passed": False, "issues": [f"DECODE_OR_HASH_FAILURE: {type(exc).__name__}: {exc}"]}
+            frames[request.schema] = None
+            continue
+        v = ri.check_metadata(meta, request.dataset, request.schema, request.symbols, request.start_utc, request.end_utc)
+        if request.schema == "definition":
+            dv, ids = ri.validate_definitions(df.reset_index(), request.symbols)
+            v.issues += dv.issues
+            report["definition_instrument_ids"] = ids
+            frames["definition"] = df
+        else:
+            ov, clean = ri.validate_ohlcv(df, request.symbols, request.start_utc, request.end_utc, record_count)
+            v.issues += ov.issues
+            frames["ohlcv-1m"] = clean
+        report["validation"][request.schema] = {"passed": v.passed, "issues": [i.__dict__ for i in v.issues],
+                                                "records_decoded": int(len(df)), "job_record_count": record_count}
+        report["raw_inputs"].append({"schema": request.schema, "job_id": entry["job_id"], **f})
+    passed = all(x["passed"] for x in report["validation"].values()) and frames.get("ohlcv-1m") is not None
+    output = {}
+    if frames.get("ohlcv-1m") is not None and "definition_instrument_ids" in report:
+        ohlcv = frames["ohlcv-1m"]
+        ids = report["definition_instrument_ids"]
+        mismatch = [s for s, g in ohlcv.groupby("symbol")["instrument_id"] if not set(g.astype(int)) <= set(ids.get(s, []))]
+        report["validation"]["cross_check"] = {"passed": not mismatch, "ohlcv_ids_not_in_definitions": mismatch}
+        passed = passed and not mismatch
+        created = dt.datetime.now(dt.timezone.utc).isoformat()
+        ingestion_utc = min(e.get("downloaded_utc", created) for e in ledger.data["entries"].values())
+        canon = ri.canonicalize(ohlcv, first, last, ingestion_utc)
+        cv, summary = ri.coverage(canon, requests[1].symbols, first, last)
+        report["validation"]["coverage"] = {"passed": cv.passed, "issues": [i.__dict__ for i in cv.issues]}
+        passed = passed and cv.passed
+        digest = ri.content_hash(canon)
+        out_path = root / "data" / "processed" / f"mnq_ohlcv_1m_canonical_{digest[:16]}.parquet"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        canon.to_parquet(out_path, index=False)
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True).stdout.strip()
+        code_sha = hashlib.sha256(Path(ri.__file__).read_bytes()).hexdigest()
+        output = {
+            "output_path": str(out_path.relative_to(root)), "output_file_sha256": hashlib.sha256(out_path.read_bytes()).hexdigest(),
+            "output_content_sha256": digest, "row_count": int(len(canon)),
+            "contract_row_counts": {k: int(v) for k, v in canon.groupby("contract").size().items()},
+            "rows_in_designated_windows": int(canon["in_designated_window"].sum()),
+            "coverage": summary, "ingestion_code_git_commit": commit, "raw_ingest_module_sha256": code_sha,
+            "configuration_sha256": hash_object({"purchase_approval": spec["data_acquisition"]["purchase_approval"],
+                                                  "history": [str(first), str(last)], "roll_rule": spec["contract_roll"]["roll_trigger"]}),
+            "exclusions": [i for x in report["validation"].values() for i in x.get("issues", []) if isinstance(i, dict) and not i.get("blocking")],
+            "missing_minute_classification": ri.UNCLASSIFIED + " for every absent scheduled minute (no calendar evidence yet); none labelled VERIFIED_NO_TRADE",
+            "price_adjustment": "NONE: original unadjusted individual-contract prices; no continuous series",
+            "created_utc": created,
+        }
+    manifest = {"kind": "MNQ_INGESTION_MANIFEST", "validation_status": "PASSED" if passed else "FAILED",
+                "approval_payload_sha256": approval.estimate_payload_sha256, **report, **output}
+    mpath = root / "outputs" / "acquisition" / "INGESTION_MANIFEST.json"
+    mpath.write_text(json.dumps(manifest, indent=2, sort_keys=True, default=str) + "\n")
+    if passed:
+        for request in requests:
+            entry = ledger.entry(da.request_key(request))
+            entry["status"] = "COMPLETED_VERIFIED"
+            ledger.put(da.request_key(request), entry)
+    print(json.dumps({"validation_status": manifest["validation_status"], "validation": report["validation"],
+                      **{k: output.get(k) for k in ("output_path", "output_file_sha256", "output_content_sha256", "row_count")}},
+                     indent=2, default=str))
+    return OK if passed else FOUND_PROBLEMS
+
+
 def cmd_sources_capture_raw(args: argparse.Namespace, root: Path) -> int:
     from mnq_research.source_archive import capture_raw_source
 
@@ -236,6 +367,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", default="outputs/estimates")
     p.add_argument("--alternatives", default="", help="comma-separated subset, e.g. A,B (default: all)")
     p.set_defaults(func=cmd_data_estimate)
+    p = data.add_parser("acquire", help="APPROVED purchase only: preflight + idempotent Databento batch jobs")
+    p.add_argument("--spec", default=str(DEFAULT_RULE_FREEZE_PATH))
+    p.add_argument("--preflight-only", action="store_true")
+    p.add_argument("--timeout", type=float, default=480.0, help="seconds to wait for job completion (rerun resumes)")
+    p.set_defaults(func=cmd_data_acquire)
+    p = data.add_parser("ingest", help="validate approved raw DBN files and derive the canonical dataset")
+    p.add_argument("--spec", default=str(DEFAULT_RULE_FREEZE_PATH))
+    p.set_defaults(func=cmd_data_ingest)
     p = data.add_parser("validate", help="validate a .parquet or .csv bar file against the data contract")
     p.add_argument("path")
     p.add_argument("--max-gaps", type=int, default=10, help="how many missing-bar gaps to list")
