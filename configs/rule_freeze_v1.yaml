@@ -1673,11 +1673,16 @@ data_acquisition:
     MNQZ6), each verified by symbology.resolve to exactly one instrument over
     the range. Unadjusted contract prices.
   time_range: >
-    Start 2019-05-05T22:00:00Z (the 18:00 New York Globex open of trade date
-    2019-05-06); end 2026-09-26T00:00:00Z exclusive (after the 17:00 New York
-    close of trade date 2026-09-25).
-  estimate_status: KNOWN_FOR_ALTERNATIVES_A_AND_B   # Round 16A capture, 2026-09-30; C/D/E deferred until signal replay identifies candidate timestamps
-  estimate_artifact: outputs/estimates/databento_estimate_5fc1e4cc64682a29.json   # payload SHA-256 5fc1e4cc64682a292baaf6e5f6057665528f7f876bc062c2b524af1c6fed6da5
+    OHLCV-1m: start 2019-05-05T22:00:00Z (the 18:00 New York Globex open of
+    trade date 2019-05-06); end 2026-09-26T00:00:00Z exclusive (after the
+    17:00 New York close of trade date 2026-09-25). Definitions: start
+    2019-05-05T00:00:00Z (UTC midnight, so Databento's definition snapshot for
+    the first UTC date is included); same exclusive end.
+  estimate_status: KNOWN_FOR_ALTERNATIVES_A_AND_B   # final combined estimate, 2026-09-30; C/D/E deferred until signal replay identifies candidate timestamps
+  estimate_artifact: outputs/estimates/databento_estimate_0fcae769b903268d.json   # payload SHA-256 0fcae769b903268d0e8f4e9c7e9219053b1b12b85746ddf8b8038da3c047d0a5; the ONLY artifact proposed for purchase approval
+  estimate_registry: outputs/estimates/ESTIMATE_REGISTRY.json   # earlier artifacts: SUPERSEDED_FOR_PURCHASE_APPROVAL
+  symbol_manifest: outputs/estimates/symbol_manifest_23df44e7c93d365d.json   # SHA-256 of the canonical 31-symbol list 23df44e7c93d365dd059524cad7b75f9c9614479033cd2764ecf99743302798a
+  estimated_charge_usd_combined: "14.263967253268"
   estimated_charge_usd_a_definition: "0.009413488209"   # before credits (credits not exposed by the API)
   estimated_charge_usd_b_ohlcv_1m: "14.254553765059"
   purchase_approval:   # Round 16B may start only after the owner fills this in

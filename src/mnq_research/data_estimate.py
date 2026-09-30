@@ -346,7 +346,9 @@ def alternatives(first_trade_date: dt.date, last_trade_date: dt.date) -> list[Es
     start, end = session_bounds(first_trade_date, last_trade_date)
     windows = rth_windows(first_trade_date, last_trade_date)
     return [
-        EstimateRequest("A", "Instrument definitions for every designated contract (symbols, expirations, tick metadata)", "definition", symbols, start, end),
+        # Definitions start at UTC midnight (Databento publishes definition snapshots at 00:00 UTC), so the
+        # snapshot effective on the first UTC date is included. The OHLCV request keeps the session start.
+        EstimateRequest("A", "Instrument definitions for every designated contract (symbols, expirations, tick metadata)", "definition", symbols, start[:10] + "T00:00:00Z", end),
         EstimateRequest("B", "Complete OHLCV-1m history, individual contracts, unadjusted", "ohlcv-1m", symbols, start, end),
         EstimateRequest("C", "Complete OHLCV-1s history, individual contracts, unadjusted", "ohlcv-1s", symbols, start, end),
         EstimateRequest("D", "Complete trade-level history, individual contracts", "trades", symbols, start, end),
@@ -364,7 +366,15 @@ def canonical_json(obj: Any) -> str:
 
 def write_artifact(results: list[EstimateResult], out_dir: Path, secret: str | None) -> Path:
     """Write a hash-addressed JSON artifact. Refuses to write anything containing the key."""
-    payload = {"kind": "DATABENTO_COST_ESTIMATE", "results": [asdict(r) for r in results]}
+    known = all(r.status is EstimateStatus.KNOWN for r in results)
+    combined = {
+        "all_known": known,
+        "estimated_charge_usd": str(sum(Decimal(r.estimated_charge_usd) for r in results)) if known else None,  # never 0 for UNKNOWN
+        "record_count": sum(r.record_count for r in results) if known else None,
+        "billable_size_uncompressed_bytes": sum(r.billable_size_uncompressed_bytes for r in results) if known else None,
+        "currency": "USD",
+    }
+    payload = {"kind": "DATABENTO_COST_ESTIMATE", "results": [asdict(r) for r in results], "combined": combined}
     text = canonical_json(payload)
     if secret and secret in text:
         raise RuntimeError("refusing to write an artifact containing credential material")

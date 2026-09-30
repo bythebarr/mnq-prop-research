@@ -1046,3 +1046,34 @@ replay identifies the actual candidate timestamps.
 
 **Status:** capture complete. `purchase_approval` is NOT populated. Round 16B
 has not started.
+
+
+## D-036 — Round 16A final combined estimate (2026-09-30)
+**Owner instruction:** remove the definitions warning by starting the
+definitions request at `2019-05-05T00:00:00Z`. Nothing else changes: the
+OHLCV-1m range, dataset, raw_symbol, the 31 contracts, unadjusted prices,
+the symbol-resolution rules, the client version and every strategy and roll
+rule stay as they were.
+
+**Result:** `outputs/estimates/databento_estimate_0fcae769b903268d.json`
+- payload SHA-256
+  `0fcae769b903268d0e8f4e9c7e9219053b1b12b85746ddf8b8038da3c047d0a5`;
+- definitions USD 0.009413488209;
+- OHLCV-1m USD 14.254553765059;
+- **combined USD 14.263967253268**, within the USD 20.00 cap;
+- the definitions BentoWarning is gone.
+
+The only remaining client note is the deprecation of the `mode` parameter,
+which doesn't affect the numbers.
+
+**Audit trail:** all four earlier artifacts are unchanged and labelled
+`SUPERSEDED_FOR_PURCHASE_APPROVAL` in
+`outputs/estimates/ESTIMATE_REGISTRY.json`. Exactly one artifact is
+`PROPOSED_FOR_PURCHASE_APPROVAL` (enforced by a test).
+
+**Symbol manifest:** `outputs/estimates/symbol_manifest_23df44e7c93d365d.json`
+(SHA-256 `23df44e7…798a`).
+
+**Status:** `purchase_approval` is still empty and unapproved. The proposed
+block is in `docs/DATA_ACQUISITION_PLAN.md`. Nothing was downloaded or
+purchased, and Round 16B has not started.

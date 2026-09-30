@@ -270,3 +270,43 @@ are not exposed by the API.
 
 The artifact is `outputs/estimates/databento_estimate_5fc1e4cc64682a29.json`.
 C, D and E are deferred until signal replay identifies candidate timestamps.
+
+### Final combined estimate: the only artifact proposed for purchase approval
+
+This is `outputs/estimates/databento_estimate_0fcae769b903268d.json`.
+- **Payload SHA-256:** `0fcae769b903268d0e8f4e9c7e9219053b1b12b85746ddf8b8038da3c047d0a5`
+- **File SHA-256:** `d8946d8a42817e618d9739fd4f9a37ca56493157adb60f4e14ddb0cbac2b2414`
+
+The only change from the previous artifact is that the definitions request
+now starts at `2019-05-05T00:00:00Z`. The definitions BentoWarning no longer
+appears.
+
+| | Definitions | OHLCV-1m | Combined |
+|---|---|---|---|
+| Cost before credits (USD) | 0.009413488209 | 14.254553765059 | **14.263967253268** |
+| Records | 11,434 | 3,904,518 | 3,915,952 |
+| Uncompressed bytes | 5,945,680 | 218,653,008 | 224,598,688 |
+
+The earlier artifacts are kept unchanged and labelled
+`SUPERSEDED_FOR_PURCHASE_APPROVAL` in `outputs/estimates/ESTIMATE_REGISTRY.json`.
+
+**Proposed purchase-approval block (NOT approved; for the owner to complete):**
+
+```yaml
+data_acquisition:
+  purchase_approval:
+    approved: false                  # owner to set true
+    approved_by: null                # owner to fill
+    approved_at_utc: null            # owner to fill
+    estimate_artifact_sha256: 0fcae769b903268d0e8f4e9c7e9219053b1b12b85746ddf8b8038da3c047d0a5
+    exact_request_parameters:
+      dataset: GLBX.MDP3
+      stype_in: raw_symbol
+      prices: original unadjusted individual contracts
+      symbols_sha256: 23df44e7c93d365dd059524cad7b75f9c9614479033cd2764ecf99743302798a   # outputs/estimates/symbol_manifest_23df44e7c93d365d.json
+      symbols: [MNQM9, MNQU9, MNQZ9, MNQH0, MNQM0, MNQU0, MNQZ0, MNQH1, MNQM1, MNQU1, MNQZ1, MNQH2, MNQM2, MNQU2, MNQZ2, MNQH3, MNQM3, MNQU3, MNQZ3, MNQH4, MNQM4, MNQU4, MNQZ4, MNQH5, MNQM5, MNQU5, MNQZ5, MNQH6, MNQM6, MNQU6, MNQZ6]
+      definitions: {schema: definition, start: "2019-05-05T00:00:00Z", end_exclusive: "2026-09-26T00:00:00Z"}
+      ohlcv: {schema: ohlcv-1m, start: "2019-05-05T22:00:00Z", end_exclusive: "2026-09-26T00:00:00Z"}
+      client: databento==0.87.0
+    maximum_permitted_charge_usd: "20.00"
+```

@@ -1,0 +1,40 @@
+{
+  "note": "Artifacts are immutable; status labels live here. Exactly one artifact may be PROPOSED_FOR_PURCHASE_APPROVAL.",
+  "artifacts": [
+    {
+      "artifact": "databento_estimate_0fcae769b903268d.json",
+      "payload_sha256": "0fcae769b903268d0e8f4e9c7e9219053b1b12b85746ddf8b8038da3c047d0a5",
+      "file_sha256": "d8946d8a42817e618d9739fd4f9a37ca56493157adb60f4e14ddb0cbac2b2414",
+      "status": "PROPOSED_FOR_PURCHASE_APPROVAL",
+      "reason": "final combined estimate: definitions from 2019-05-05T00:00:00Z, OHLCV-1m unchanged"
+    },
+    {
+      "artifact": "databento_estimate_2cafda475ccb5cec.json",
+      "payload_sha256": "2cafda475ccb5cec3fca8ae35f5f72787373efbcf6ccc101d9edaf90a5fd98b8",
+      "file_sha256": "7bd7a69d0e8318cc90c23b405533fcbe9fa98a298987e1c0313630c1700a2311",
+      "status": "SUPERSEDED_FOR_PURCHASE_APPROVAL",
+      "reason": "UNKNOWN: \"partial\" symbology treated as failure before the designated-window coverage rule"
+    },
+    {
+      "artifact": "databento_estimate_4775999004147ea2.json",
+      "payload_sha256": "4775999004147ea2dc5f781f349094f8037660ac787161afddd14a53c50d7183",
+      "file_sha256": "33dd5bb6358a5dbbd8a4e22662ac6cfd3c6dcbcc1e00e54c6486de8f8d8c692f",
+      "status": "SUPERSEDED_FOR_PURCHASE_APPROVAL",
+      "reason": "planning run without credentials; all UNKNOWN"
+    },
+    {
+      "artifact": "databento_estimate_536ce67211cd2a97.json",
+      "payload_sha256": "536ce67211cd2a975681c4fe1026737db14ac54a9168aaf3dbcc44400d240135",
+      "file_sha256": "bd9aadf9ae03e6e9fed24ffb0b4451aac449203e605d1c93ebb5883a0359ad72",
+      "status": "SUPERSEDED_FOR_PURCHASE_APPROVAL",
+      "reason": "client warnings not recorded in the artifact"
+    },
+    {
+      "artifact": "databento_estimate_5fc1e4cc64682a29.json",
+      "payload_sha256": "5fc1e4cc64682a292baaf6e5f6057665528f7f876bc062c2b524af1c6fed6da5",
+      "file_sha256": "fc3bd74a2e4a3c57ee7ad147dc5c5cd1367b8c8a99cd0be9d418e0c4e680d294",
+      "status": "SUPERSEDED_FOR_PURCHASE_APPROVAL",
+      "reason": "definitions request did not start at UTC midnight (BentoWarning)"
+    }
+  ]
+}

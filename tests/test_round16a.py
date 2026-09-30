@@ -12,6 +12,7 @@ import datetime as dt
 import hashlib
 import inspect
 import json
+from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 
@@ -430,3 +431,38 @@ def test_the_captured_estimate_matches_the_specification_record():
         assert r["status"] == "KNOWN" and tuple(r["request"]["symbols"]) == CONTRACTS and r["unresolved_symbols"] == []
         assert r["request"]["stype_in"] == "raw_symbol" and r["client_version"] == "0.87.0" and r["metadata_call_count"] == 4
     assert all(v is None for v in da["purchase_approval"].values() if v is not False)  # never populated here
+
+
+def test_final_combined_estimate_is_the_only_one_proposed_and_the_warning_is_gone():
+    da = SPEC["data_acquisition"]
+    registry = json.loads((ROOT / da["estimate_registry"]).read_text())["artifacts"]
+    on_disk = {p.name for p in (ROOT / "outputs" / "estimates").glob("databento_estimate_*.json")}
+    assert {e["artifact"] for e in registry} == on_disk  # every artifact is labelled
+    proposed = [e for e in registry if e["status"] == "PROPOSED_FOR_PURCHASE_APPROVAL"]
+    assert len(proposed) == 1 and proposed[0]["artifact"] == Path(da["estimate_artifact"]).name
+    assert all(e["status"] == "SUPERSEDED_FOR_PURCHASE_APPROVAL" for e in registry if e is not proposed[0])
+    for e in registry:  # the audit trail is immutable: recorded hashes still match
+        path = ROOT / "outputs" / "estimates" / e["artifact"]
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == e["file_sha256"]
+        assert json.loads(path.read_text())["sha256_of_payload"] == e["payload_sha256"]
+    data = json.loads((ROOT / da["estimate_artifact"]).read_text())
+    a, b = data["payload"]["results"]
+    assert (a["request"]["schema"], a["request"]["start_utc"], a["request"]["end_utc"]) == ("definition", "2019-05-05T00:00:00Z", "2026-09-26T00:00:00Z")
+    assert (b["request"]["schema"], b["request"]["start_utc"], b["request"]["end_utc"]) == ("ohlcv-1m", "2019-05-05T22:00:00Z", "2026-09-26T00:00:00Z")
+    assert not [w for w in a["warnings"] + b["warnings"] if "BentoWarning" in w or "UTC midnight" in w]
+    combined = data["payload"]["combined"]
+    assert combined["all_known"] and combined["estimated_charge_usd"] == da["estimated_charge_usd_combined"]
+    assert Decimal(combined["estimated_charge_usd"]) == Decimal(a["estimated_charge_usd"]) + Decimal(b["estimated_charge_usd"])
+    assert Decimal(combined["estimated_charge_usd"]) <= Decimal("20.00")
+    assert combined["record_count"] == a["record_count"] + b["record_count"]
+    manifest = json.loads((ROOT / da["symbol_manifest"]).read_text())
+    assert manifest["symbols"] == list(CONTRACTS) == a["request"]["symbols"] == b["request"]["symbols"]
+    assert hashlib.sha256(manifest["canonical_json"].encode()).hexdigest() == manifest["sha256_of_canonical_json"]
+    assert all(v is None for k, v in da["purchase_approval"].items() if k != "approved") and da["purchase_approval"]["approved"] is False
+
+
+def test_definitions_request_starts_at_utc_midnight_and_ohlcv_is_unchanged():
+    reqs = {r.alternative: r for r in de.alternatives(FIRST, LAST)}
+    assert reqs["A"].start_utc == "2019-05-05T00:00:00Z" and reqs["B"].start_utc == "2019-05-05T22:00:00Z"
+    assert reqs["A"].end_utc == reqs["B"].end_utc == "2026-09-26T00:00:00Z"
+    assert reqs["A"].symbols == reqs["B"].symbols == CONTRACTS
