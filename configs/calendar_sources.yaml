@@ -8,6 +8,7 @@
 # never from a recurring rule.
 sources:
   - source_id: CME_EQUITY_INDEX_HOLIDAY_AND_EARLY_CLOSE
+    access_status: ACCESS_BLOCKED_TIMEOUT   # 2026-09-30: connection opened, no response within 20 s
     covers: CME Globex equity-index futures holidays, early closes and halts, 2019-05-06..2026-09-25
     responsible_body: CME Group
     official_url: https://www.cmegroup.com/tools-information/holiday-calendar.html
@@ -15,30 +16,35 @@ sources:
     timezone_treatment: CME publishes Central Time; convert with the IANA America/Chicago rules, store UTC
     notes: The live page shows current/next holidays only; historical early closes need the archived per-holiday CME trading-hours notices (Globex notices) for each year.
   - source_id: BLS_EMPLOYMENT_SITUATION
+    access_status: ACCESS_BLOCKED_AKAMAI_403   # 2026-09-30: HTTP 403 from the site's Akamai edge
     covers: Employment Situation release dates and 08:30 ET times
     responsible_body: U.S. Bureau of Labor Statistics
     official_url: https://www.bls.gov/bls/news-release/empsit.htm
     url_verified: false
     timezone_treatment: Eastern Time wall clock, IANA America/New_York
   - source_id: BLS_CPI
+    access_status: ACCESS_BLOCKED_AKAMAI_403   # 2026-09-30: HTTP 403 from the site's Akamai edge
     covers: Consumer Price Index release dates and times
     responsible_body: U.S. Bureau of Labor Statistics
     official_url: https://www.bls.gov/bls/news-release/cpi.htm
     url_verified: false
     timezone_treatment: Eastern Time, IANA America/New_York
   - source_id: BLS_PPI
+    access_status: ACCESS_BLOCKED_AKAMAI_403   # 2026-09-30: HTTP 403 from the site's Akamai edge
     covers: Producer Price Index release dates and times
     responsible_body: U.S. Bureau of Labor Statistics
     official_url: https://www.bls.gov/bls/news-release/ppi.htm
     url_verified: false
     timezone_treatment: Eastern Time, IANA America/New_York
   - source_id: BLS_JOLTS
+    access_status: ACCESS_BLOCKED_AKAMAI_403   # 2026-09-30: HTTP 403 from the site's Akamai edge
     covers: Job Openings and Labor Turnover Survey release dates and times
     responsible_body: U.S. Bureau of Labor Statistics
     official_url: https://www.bls.gov/bls/news-release/jolts.htm
     url_verified: false
     timezone_treatment: Eastern Time, IANA America/New_York
   - source_id: BLS_RELEASE_SCHEDULES_BY_YEAR
+    access_status: ACCESS_BLOCKED_AKAMAI_403   # 2026-09-30: HTTP 403 from the site's Akamai edge
     covers: Cross-check of all BLS release timestamps per year (incl. 2019 shutdown-era and 2025 reschedules)
     responsible_body: U.S. Bureau of Labor Statistics
     official_url: https://www.bls.gov/schedule/
@@ -81,6 +87,10 @@ sources:
     url_verified: false
     timezone_treatment: Eastern Time, IANA America/New_York
   - source_id: FOMC_MEETINGS_STATEMENTS_PRESS_CONFERENCES
+    access_status: RAW_CAPTURED_NOT_PARSED   # 2026-09-30; covers 2021-2027 only; 2019-2020 need the per-year historical pages
+    raw_captures:
+      - [https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm, 5a8df4ac3d837eb87085a31ebff88241136e0213bc147e363846b78c521243a0, /home/user/mnq-prop-research/archives/calendars/federal_reserve/5a8df4ac3d837eb87085a31ebff88241136e0213bc147e363846b78c521243a0.html, "2026-09-30T20:08:36.745765+00:00"]
+      - [https://www.federalreserve.gov/monetarypolicy/fomc_historical.htm, 41046b5eaf7cf0bb6ca6ecbdbfb04dd6650570790225f2b34c69ccb603be81b3, /home/user/mnq-prop-research/archives/calendars/federal_reserve/41046b5eaf7cf0bb6ca6ecbdbfb04dd6650570790225f2b34c69ccb603be81b3.html, "2026-09-30T20:08:37.662542+00:00"]   # index page only: links to per-year historical pages, not a schedule itself
     covers: FOMC statement times, unscheduled meetings, Chair press-conference times
     responsible_body: Board of Governors of the Federal Reserve System
     official_url: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm
@@ -88,6 +98,9 @@ sources:
     timezone_treatment: Eastern Time, IANA America/New_York
     notes: Pre-2021 meetings move to https://www.federalreserve.gov/monetarypolicy/fomc_historical.htm
   - source_id: FED_CHAIR_TESTIMONY
+    access_status: RAW_CAPTURED_NOT_PARSED   # 2026-09-30; index of testimony by year (2010-2026); dated hearing times still need the per-year pages and committee records
+    raw_captures:
+      - [https://www.federalreserve.gov/newsevents/testimony.htm, 5961ab6e87a4c23b01403271757794f221ff78a15cd8705fb6ee46bec530d28a, /home/user/mnq-prop-research/archives/calendars/federal_reserve/5961ab6e87a4c23b01403271757794f221ff78a15cd8705fb6ee46bec530d28a.html, "2026-09-30T20:08:38.499656+00:00"]
     covers: Scheduled Chair monetary-policy testimony dates and hearing start/end times
     responsible_body: Board of Governors of the Federal Reserve System; congressional committee records
     official_url: https://www.federalreserve.gov/newsevents/testimony.htm
@@ -95,6 +108,7 @@ sources:
     timezone_treatment: Eastern Time, IANA America/New_York
     notes: Hearing start/end times come from the committee hearing records; end times may be unknown -> fail closed per the duration-event rule.
   - source_id: SESSION_AND_ROLL_CALENDAR
+    access_status: ACCESS_BLOCKED_TIMEOUT   # 2026-09-30: connection opened, no response within 20 s
     covers: Derived versioned calendar of full trading dates, holidays, early closes, roll dates and UNKNOWN dates
     responsible_body: Derived in-repo from the CME source and the frozen roll rule
     official_url: https://www.cmegroup.com/tools-information/holiday-calendar.html

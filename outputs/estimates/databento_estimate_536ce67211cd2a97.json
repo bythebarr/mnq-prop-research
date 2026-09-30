@@ -1,0 +1,740 @@
+{
+  "payload": {
+    "kind": "DATABENTO_COST_ESTIMATE",
+    "results": [
+      {
+        "applicable_credits_usd": null,
+        "billable_size_uncompressed_bytes": 5945680,
+        "client_version": "0.87.0",
+        "compressed_size_bytes": "NOT_EXPOSED_BY_DATABENTO_METADATA_API",
+        "currency": "USD",
+        "double_count_risk": "NONE: one request per alternative; each record belongs to exactly one instrument; symbols are unique; sub-windows (if any) are disjoint and validated. Roll-week overlap is two DIFFERENT contracts, both required.",
+        "estimated_charge_usd": "0.009413488209",
+        "estimated_cost_before_credits_usd": "0.009413488209",
+        "includes_definitions": true,
+        "metadata_call_count": 4,
+        "raw_responses": {
+          "symbology.resolve": {
+            "end_date": "2026-09-26",
+            "message": "Partially resolved",
+            "not_found": [],
+            "partial": [
+              "MNQU0",
+              "MNQZ0",
+              "MNQH1",
+              "MNQM1",
+              "MNQU1",
+              "MNQZ1",
+              "MNQH2",
+              "MNQM2",
+              "MNQU2",
+              "MNQZ2",
+              "MNQH3",
+              "MNQM3",
+              "MNQU3",
+              "MNQZ3",
+              "MNQH4",
+              "MNQM4",
+              "MNQU4",
+              "MNQZ4",
+              "MNQH5",
+              "MNQM5",
+              "MNQU5",
+              "MNQZ5",
+              "MNQH6",
+              "MNQM6",
+              "MNQU6",
+              "MNQZ6"
+            ],
+            "result": {
+              "MNQH0": [
+                {
+                  "d0": "2019-05-03",
+                  "d1": "2020-04-05",
+                  "s": "8196"
+                }
+              ],
+              "MNQH1": [
+                {
+                  "d0": "2019-12-08",
+                  "d1": "2021-04-04",
+                  "s": "6227"
+                }
+              ],
+              "MNQH2": [
+                {
+                  "d0": "2020-12-06",
+                  "d1": "2022-03-22",
+                  "s": "7575"
+                }
+              ],
+              "MNQH3": [
+                {
+                  "d0": "2021-12-05",
+                  "d1": "2023-05-30",
+                  "s": "8071"
+                }
+              ],
+              "MNQH4": [
+                {
+                  "d0": "2022-12-04",
+                  "d1": "2026-09-26",
+                  "s": "7101"
+                }
+              ],
+              "MNQH5": [
+                {
+                  "d0": "2023-12-03",
+                  "d1": "2025-03-30",
+                  "s": "42003617"
+                }
+              ],
+              "MNQH6": [
+                {
+                  "d0": "2024-12-08",
+                  "d1": "2026-09-26",
+                  "s": "42004946"
+                }
+              ],
+              "MNQM0": [
+                {
+                  "d0": "2019-05-03",
+                  "d1": "2020-07-05",
+                  "s": "8204"
+                }
+              ],
+              "MNQM1": [
+                {
+                  "d0": "2020-03-08",
+                  "d1": "2021-07-04",
+                  "s": "9485"
+                }
+              ],
+              "MNQM2": [
+                {
+                  "d0": "2021-03-07",
+                  "d1": "2022-06-26",
+                  "s": "13505"
+                }
+              ],
+              "MNQM3": [
+                {
+                  "d0": "2022-03-06",
+                  "d1": "2026-09-26",
+                  "s": "4973"
+                }
+              ],
+              "MNQM4": [
+                {
+                  "d0": "2023-03-05",
+                  "d1": "2026-09-26",
+                  "s": "10"
+                }
+              ],
+              "MNQM5": [
+                {
+                  "d0": "2024-03-03",
+                  "d1": "2025-06-29",
+                  "s": "42009475"
+                }
+              ],
+              "MNQM6": [
+                {
+                  "d0": "2025-03-09",
+                  "d1": "2026-07-02",
+                  "s": "42004936"
+                }
+              ],
+              "MNQM9": [
+                {
+                  "d0": "2019-05-03",
+                  "d1": "2019-07-08",
+                  "s": "8078"
+                }
+              ],
+              "MNQU0": [
+                {
+                  "d0": "2019-06-09",
+                  "d1": "2020-10-04",
+                  "s": "13081"
+                }
+              ],
+              "MNQU1": [
+                {
+                  "d0": "2020-06-07",
+                  "d1": "2021-10-03",
+                  "s": "3601"
+                }
+              ],
+              "MNQU2": [
+                {
+                  "d0": "2021-06-06",
+                  "d1": "2022-11-08",
+                  "s": "7688"
+                }
+              ],
+              "MNQU3": [
+                {
+                  "d0": "2022-06-05",
+                  "d1": "2026-09-26",
+                  "s": "9235"
+                }
+              ],
+              "MNQU4": [
+                {
+                  "d0": "2023-06-04",
+                  "d1": "2026-09-26",
+                  "s": "13941"
+                }
+              ],
+              "MNQU5": [
+                {
+                  "d0": "2024-06-09",
+                  "d1": "2025-09-28",
+                  "s": "42003472"
+                }
+              ],
+              "MNQU6": [
+                {
+                  "d0": "2025-06-08",
+                  "d1": "2026-09-26",
+                  "s": "42004800"
+                }
+              ],
+              "MNQU9": [
+                {
+                  "d0": "2019-05-03",
+                  "d1": "2019-10-06",
+                  "s": "8084"
+                }
+              ],
+              "MNQZ0": [
+                {
+                  "d0": "2019-09-08",
+                  "d1": "2021-01-03",
+                  "s": "17706"
+                }
+              ],
+              "MNQZ1": [
+                {
+                  "d0": "2020-09-06",
+                  "d1": "2022-01-02",
+                  "s": "1447"
+                }
+              ],
+              "MNQZ2": [
+                {
+                  "d0": "2021-09-05",
+                  "d1": "2022-12-25",
+                  "s": "20332"
+                }
+              ],
+              "MNQZ3": [
+                {
+                  "d0": "2022-09-04",
+                  "d1": "2026-09-26",
+                  "s": "34070"
+                }
+              ],
+              "MNQZ4": [
+                {
+                  "d0": "2023-09-03",
+                  "d1": "2024-12-29",
+                  "s": "42008411"
+                }
+              ],
+              "MNQZ5": [
+                {
+                  "d0": "2024-09-08",
+                  "d1": "2026-01-04",
+                  "s": "42001149"
+                }
+              ],
+              "MNQZ6": [
+                {
+                  "d0": "2025-09-07",
+                  "d1": "2026-09-26",
+                  "s": "42005282"
+                }
+              ],
+              "MNQZ9": [
+                {
+                  "d0": "2019-05-03",
+                  "d1": "2020-01-05",
+                  "s": "8107"
+                }
+              ]
+            },
+            "start_date": "2019-05-05",
+            "status": 1,
+            "stype_in": "raw_symbol",
+            "stype_out": "instrument_id",
+            "symbols": [
+              "MNQM9",
+              "MNQU9",
+              "MNQZ9",
+              "MNQH0",
+              "MNQM0",
+              "MNQU0",
+              "MNQZ0",
+              "MNQH1",
+              "MNQM1",
+              "MNQU1",
+              "MNQZ1",
+              "MNQH2",
+              "MNQM2",
+              "MNQU2",
+              "MNQZ2",
+              "MNQH3",
+              "MNQM3",
+              "MNQU3",
+              "MNQZ3",
+              "MNQH4",
+              "MNQM4",
+              "MNQU4",
+              "MNQZ4",
+              "MNQH5",
+              "MNQM5",
+              "MNQU5",
+              "MNQZ5",
+              "MNQH6",
+              "MNQM6",
+              "MNQU6",
+              "MNQZ6"
+            ]
+          },
+          "windows": [
+            {
+              "end": "2026-09-26T00:00:00Z",
+              "get_billable_size": 5945680,
+              "get_cost": 0.009413488209,
+              "get_record_count": 11434,
+              "start": "2019-05-05T22:00:00Z"
+            }
+          ]
+        },
+        "record_count": 11434,
+        "request": {
+          "alternative": "A",
+          "dataset": "GLBX.MDP3",
+          "description": "Instrument definitions for every designated contract (symbols, expirations, tick metadata)",
+          "end_utc": "2026-09-26T00:00:00Z",
+          "mode": "historical",
+          "schema": "definition",
+          "start_utc": "2019-05-05T22:00:00Z",
+          "stype_in": "raw_symbol",
+          "symbols": [
+            "MNQM9",
+            "MNQU9",
+            "MNQZ9",
+            "MNQH0",
+            "MNQM0",
+            "MNQU0",
+            "MNQZ0",
+            "MNQH1",
+            "MNQM1",
+            "MNQU1",
+            "MNQZ1",
+            "MNQH2",
+            "MNQM2",
+            "MNQU2",
+            "MNQZ2",
+            "MNQH3",
+            "MNQM3",
+            "MNQU3",
+            "MNQZ3",
+            "MNQH4",
+            "MNQM4",
+            "MNQU4",
+            "MNQZ4",
+            "MNQH5",
+            "MNQM5",
+            "MNQU5",
+            "MNQZ5",
+            "MNQH6",
+            "MNQM6",
+            "MNQU6",
+            "MNQZ6"
+          ],
+          "windows": []
+        },
+        "retrieved_utc": "2026-09-30T20:05:52.328820+00:00",
+        "status": "KNOWN",
+        "symbol_resolution": {
+          "problems": []
+        },
+        "unresolved_symbols": [],
+        "warnings": [
+          "CREDITS_NOT_EXPOSED_BY_DATABENTO_METADATA_API: the final charge equals the pre-credit estimate unless the portal shows credits"
+        ]
+      },
+      {
+        "applicable_credits_usd": null,
+        "billable_size_uncompressed_bytes": 218653008,
+        "client_version": "0.87.0",
+        "compressed_size_bytes": "NOT_EXPOSED_BY_DATABENTO_METADATA_API",
+        "currency": "USD",
+        "double_count_risk": "NONE: one request per alternative; each record belongs to exactly one instrument; symbols are unique; sub-windows (if any) are disjoint and validated. Roll-week overlap is two DIFFERENT contracts, both required.",
+        "estimated_charge_usd": "14.254553765059",
+        "estimated_cost_before_credits_usd": "14.254553765059",
+        "includes_definitions": false,
+        "metadata_call_count": 4,
+        "raw_responses": {
+          "symbology.resolve": {
+            "end_date": "2026-09-26",
+            "message": "Partially resolved",
+            "not_found": [],
+            "partial": [
+              "MNQU0",
+              "MNQZ0",
+              "MNQH1",
+              "MNQM1",
+              "MNQU1",
+              "MNQZ1",
+              "MNQH2",
+              "MNQM2",
+              "MNQU2",
+              "MNQZ2",
+              "MNQH3",
+              "MNQM3",
+              "MNQU3",
+              "MNQZ3",
+              "MNQH4",
+              "MNQM4",
+              "MNQU4",
+              "MNQZ4",
+              "MNQH5",
+              "MNQM5",
+              "MNQU5",
+              "MNQZ5",
+              "MNQH6",
+              "MNQM6",
+              "MNQU6",
+              "MNQZ6"
+            ],
+            "result": {
+              "MNQH0": [
+                {
+                  "d0": "2019-05-03",
+                  "d1": "2020-04-05",
+                  "s": "8196"
+                }
+              ],
+              "MNQH1": [
+                {
+                  "d0": "2019-12-08",
+                  "d1": "2021-04-04",
+                  "s": "6227"
+                }
+              ],
+              "MNQH2": [
+                {
+                  "d0": "2020-12-06",
+                  "d1": "2022-03-22",
+                  "s": "7575"
+                }
+              ],
+              "MNQH3": [
+                {
+                  "d0": "2021-12-05",
+                  "d1": "2023-05-30",
+                  "s": "8071"
+                }
+              ],
+              "MNQH4": [
+                {
+                  "d0": "2022-12-04",
+                  "d1": "2026-09-26",
+                  "s": "7101"
+                }
+              ],
+              "MNQH5": [
+                {
+                  "d0": "2023-12-03",
+                  "d1": "2025-03-30",
+                  "s": "42003617"
+                }
+              ],
+              "MNQH6": [
+                {
+                  "d0": "2024-12-08",
+                  "d1": "2026-09-26",
+                  "s": "42004946"
+                }
+              ],
+              "MNQM0": [
+                {
+                  "d0": "2019-05-03",
+                  "d1": "2020-07-05",
+                  "s": "8204"
+                }
+              ],
+              "MNQM1": [
+                {
+                  "d0": "2020-03-08",
+                  "d1": "2021-07-04",
+                  "s": "9485"
+                }
+              ],
+              "MNQM2": [
+                {
+                  "d0": "2021-03-07",
+                  "d1": "2022-06-26",
+                  "s": "13505"
+                }
+              ],
+              "MNQM3": [
+                {
+                  "d0": "2022-03-06",
+                  "d1": "2026-09-26",
+                  "s": "4973"
+                }
+              ],
+              "MNQM4": [
+                {
+                  "d0": "2023-03-05",
+                  "d1": "2026-09-26",
+                  "s": "10"
+                }
+              ],
+              "MNQM5": [
+                {
+                  "d0": "2024-03-03",
+                  "d1": "2025-06-29",
+                  "s": "42009475"
+                }
+              ],
+              "MNQM6": [
+                {
+                  "d0": "2025-03-09",
+                  "d1": "2026-07-02",
+                  "s": "42004936"
+                }
+              ],
+              "MNQM9": [
+                {
+                  "d0": "2019-05-03",
+                  "d1": "2019-07-08",
+                  "s": "8078"
+                }
+              ],
+              "MNQU0": [
+                {
+                  "d0": "2019-06-09",
+                  "d1": "2020-10-04",
+                  "s": "13081"
+                }
+              ],
+              "MNQU1": [
+                {
+                  "d0": "2020-06-07",
+                  "d1": "2021-10-03",
+                  "s": "3601"
+                }
+              ],
+              "MNQU2": [
+                {
+                  "d0": "2021-06-06",
+                  "d1": "2022-11-08",
+                  "s": "7688"
+                }
+              ],
+              "MNQU3": [
+                {
+                  "d0": "2022-06-05",
+                  "d1": "2026-09-26",
+                  "s": "9235"
+                }
+              ],
+              "MNQU4": [
+                {
+                  "d0": "2023-06-04",
+                  "d1": "2026-09-26",
+                  "s": "13941"
+                }
+              ],
+              "MNQU5": [
+                {
+                  "d0": "2024-06-09",
+                  "d1": "2025-09-28",
+                  "s": "42003472"
+                }
+              ],
+              "MNQU6": [
+                {
+                  "d0": "2025-06-08",
+                  "d1": "2026-09-26",
+                  "s": "42004800"
+                }
+              ],
+              "MNQU9": [
+                {
+                  "d0": "2019-05-03",
+                  "d1": "2019-10-06",
+                  "s": "8084"
+                }
+              ],
+              "MNQZ0": [
+                {
+                  "d0": "2019-09-08",
+                  "d1": "2021-01-03",
+                  "s": "17706"
+                }
+              ],
+              "MNQZ1": [
+                {
+                  "d0": "2020-09-06",
+                  "d1": "2022-01-02",
+                  "s": "1447"
+                }
+              ],
+              "MNQZ2": [
+                {
+                  "d0": "2021-09-05",
+                  "d1": "2022-12-25",
+                  "s": "20332"
+                }
+              ],
+              "MNQZ3": [
+                {
+                  "d0": "2022-09-04",
+                  "d1": "2026-09-26",
+                  "s": "34070"
+                }
+              ],
+              "MNQZ4": [
+                {
+                  "d0": "2023-09-03",
+                  "d1": "2024-12-29",
+                  "s": "42008411"
+                }
+              ],
+              "MNQZ5": [
+                {
+                  "d0": "2024-09-08",
+                  "d1": "2026-01-04",
+                  "s": "42001149"
+                }
+              ],
+              "MNQZ6": [
+                {
+                  "d0": "2025-09-07",
+                  "d1": "2026-09-26",
+                  "s": "42005282"
+                }
+              ],
+              "MNQZ9": [
+                {
+                  "d0": "2019-05-03",
+                  "d1": "2020-01-05",
+                  "s": "8107"
+                }
+              ]
+            },
+            "start_date": "2019-05-05",
+            "status": 1,
+            "stype_in": "raw_symbol",
+            "stype_out": "instrument_id",
+            "symbols": [
+              "MNQM9",
+              "MNQU9",
+              "MNQZ9",
+              "MNQH0",
+              "MNQM0",
+              "MNQU0",
+              "MNQZ0",
+              "MNQH1",
+              "MNQM1",
+              "MNQU1",
+              "MNQZ1",
+              "MNQH2",
+              "MNQM2",
+              "MNQU2",
+              "MNQZ2",
+              "MNQH3",
+              "MNQM3",
+              "MNQU3",
+              "MNQZ3",
+              "MNQH4",
+              "MNQM4",
+              "MNQU4",
+              "MNQZ4",
+              "MNQH5",
+              "MNQM5",
+              "MNQU5",
+              "MNQZ5",
+              "MNQH6",
+              "MNQM6",
+              "MNQU6",
+              "MNQZ6"
+            ]
+          },
+          "windows": [
+            {
+              "end": "2026-09-26T00:00:00Z",
+              "get_billable_size": 218653008,
+              "get_cost": 14.254553765059,
+              "get_record_count": 3904518,
+              "start": "2019-05-05T22:00:00Z"
+            }
+          ]
+        },
+        "record_count": 3904518,
+        "request": {
+          "alternative": "B",
+          "dataset": "GLBX.MDP3",
+          "description": "Complete OHLCV-1m history, individual contracts, unadjusted",
+          "end_utc": "2026-09-26T00:00:00Z",
+          "mode": "historical",
+          "schema": "ohlcv-1m",
+          "start_utc": "2019-05-05T22:00:00Z",
+          "stype_in": "raw_symbol",
+          "symbols": [
+            "MNQM9",
+            "MNQU9",
+            "MNQZ9",
+            "MNQH0",
+            "MNQM0",
+            "MNQU0",
+            "MNQZ0",
+            "MNQH1",
+            "MNQM1",
+            "MNQU1",
+            "MNQZ1",
+            "MNQH2",
+            "MNQM2",
+            "MNQU2",
+            "MNQZ2",
+            "MNQH3",
+            "MNQM3",
+            "MNQU3",
+            "MNQZ3",
+            "MNQH4",
+            "MNQM4",
+            "MNQU4",
+            "MNQZ4",
+            "MNQH5",
+            "MNQM5",
+            "MNQU5",
+            "MNQZ5",
+            "MNQH6",
+            "MNQM6",
+            "MNQU6",
+            "MNQZ6"
+          ],
+          "windows": []
+        },
+        "retrieved_utc": "2026-09-30T20:06:38.518775+00:00",
+        "status": "KNOWN",
+        "symbol_resolution": {
+          "problems": []
+        },
+        "unresolved_symbols": [],
+        "warnings": [
+          "CREDITS_NOT_EXPOSED_BY_DATABENTO_METADATA_API: the final charge equals the pre-credit estimate unless the portal shows credits"
+        ]
+      }
+    ]
+  },
+  "sha256_of_payload": "536ce67211cd2a975681c4fe1026737db14ac54a9168aaf3dbcc44400d240135"
+}

@@ -82,6 +82,13 @@ def cmd_data_estimate(args: argparse.Namespace, root: Path) -> int:
     first = dt.date.fromisoformat(str(spec["source_data"]["history_start_date"]))
     last = dt.date.fromisoformat(str(spec["source_data"]["history_end_date"]))
     requests = de.alternatives(first, last)
+    if args.alternatives:
+        wanted = [a.strip() for a in args.alternatives.split(",") if a.strip()]
+        unknown = sorted(set(wanted) - {r.alternative for r in requests})
+        if unknown:
+            print(f"unknown alternatives: {unknown}")
+            return CANNOT_RUN
+        requests = [r for r in requests if r.alternative in wanted]
     out_dir = _resolve(args.out, root)
     try:
         key = de.load_api_key()
@@ -109,6 +116,14 @@ def cmd_data_estimate(args: argparse.Namespace, root: Path) -> int:
               f"size_bytes={r.billable_size_uncompressed_bytes} warnings={len(r.warnings)}")
     print(f"Artifact: {path}")
     return OK if all(r.status is de.EstimateStatus.KNOWN for r in results) else FOUND_PROBLEMS
+
+
+def cmd_sources_capture_raw(args: argparse.Namespace, root: Path) -> int:
+    from mnq_research.source_archive import capture_raw_source
+
+    m = capture_raw_source(args.url, _resolve(args.out, root))
+    print(json.dumps(m, indent=2, sort_keys=True))
+    return OK if m["status"] == "CAPTURED" else FOUND_PROBLEMS
 
 
 def cmd_sources_archive_commission(args: argparse.Namespace, root: Path) -> int:
@@ -219,6 +234,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = data.add_parser("estimate", help="Databento COST ESTIMATE only (no download); key from DATABENTO_API_KEY")
     p.add_argument("--spec", default=str(DEFAULT_RULE_FREEZE_PATH))
     p.add_argument("--out", default="outputs/estimates")
+    p.add_argument("--alternatives", default="", help="comma-separated subset, e.g. A,B (default: all)")
     p.set_defaults(func=cmd_data_estimate)
     p = data.add_parser("validate", help="validate a .parquet or .csv bar file against the data contract")
     p.add_argument("path")
@@ -234,6 +250,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--spec", default=str(DEFAULT_RULE_FREEZE_PATH))
     p.add_argument("--out", default="archives/sources/tradeify_commissions")
     p.set_defaults(func=cmd_sources_archive_commission)
+    p = src.add_parser("capture-raw", help="archive one official page as raw bytes + SHA-256 manifest (no parsing)")
+    p.add_argument("url")
+    p.add_argument("--out", default="archives/calendars")
+    p.set_defaults(func=cmd_sources_capture_raw)
 
     exp = sub.add_parser("experiment", help="experiment registry").add_subparsers(dest="action", required=True)
     p = exp.add_parser("inspect", help="show an experiment plan and everything blocking it")

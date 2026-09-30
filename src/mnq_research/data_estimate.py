@@ -160,6 +160,8 @@ class EstimateResult:
     raw_responses: dict[str, Any] = field(default_factory=dict)
     retrieved_utc: str = ""
     client_version: str = ""
+    metadata_call_count: int = 0
+    unresolved_symbols: list[str] = field(default_factory=list)
 
 
 class MetadataOnlyClient:
@@ -186,17 +188,52 @@ def _finite_non_negative(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0
 
 
-def _resolution_problems(response: Any, symbols: tuple[str, ...]) -> list[str]:
+PRIOR_DAY_MARGIN = dt.timedelta(days=7)  # data needed before a contract becomes designated (prior-day levels)
+MONTH_OF_CODE = {code: month for month, code in QUARTER_MONTH_CODES.items()}
+
+
+def designated_window(symbol: str, first_trade_date: dt.date, last_trade_date: dt.date) -> tuple[dt.date, dt.date]:
+    """The dates the frozen roll rule needs data for this contract: [start, end] within the frozen range."""
+    month = MONTH_OF_CODE[symbol[3]]
+    candidates = [y for y in range(first_trade_date.year - 1, last_trade_date.year + 2) if y % 10 == int(symbol[4])]
+    year = min(candidates, key=lambda y: abs(roll_date(y, month) - first_trade_date) if roll_date(y, month) > first_trade_date else dt.timedelta.max)
+    prev_year, prev_month = (year, month - 3) if month > 3 else (year - 1, 12)
+    start = max(roll_date(prev_year, prev_month) - PRIOR_DAY_MARGIN, first_trade_date)
+    end = min(roll_date(year, month), last_trade_date)
+    return start, end
+
+
+def _resolution_problems(response: Any, symbols: tuple[str, ...], first: dt.date, last: dt.date) -> list[str]:
+    """Each symbol: exactly one instrument, whose mapping covers the contract's designated window.
+
+    Databento marks a symbol "partial" when it resolves for only part of the requested range; that is
+    expected for individual quarterly contracts and is accepted ONLY if the single mapping covers the
+    window the frozen roll rule needs. Anything else fails closed.
+    """
     if not isinstance(response, dict) or not isinstance(response.get("result"), dict):
         return ["SYMBOL_RESOLUTION_RESPONSE_MALFORMED"]
     problems = [f"UNRESOLVED:{s}" for s in response.get("not_found", []) or []]
-    problems += [f"PARTIALLY_RESOLVED:{s}" for s in response.get("partial", []) or []]
     for s in symbols:
         mappings = response["result"].get(s)
         if not mappings:
             problems.append(f"UNRESOLVED:{s}")
-        elif len({m.get("s") for m in mappings}) != 1:
+            continue
+        if len({m.get("s") for m in mappings}) != 1:
             problems.append(f"AMBIGUOUS_INSTRUMENT_ID:{s}")
+            continue
+        try:
+            d0 = min(dt.date.fromisoformat(m["d0"]) for m in mappings)
+            d1 = max(dt.date.fromisoformat(m["d1"]) for m in mappings)
+        except (KeyError, TypeError, ValueError):
+            problems.append(f"MAPPING_DATES_MALFORMED:{s}")
+            continue
+        try:
+            start, end = designated_window(s, first, last)
+        except ValueError:
+            problems.append(f"SYMBOL_OUTSIDE_REQUESTED_RANGE:{s}")
+            continue
+        if d0 > start or d1 < end:
+            problems.append(f"MAPPING_DOES_NOT_COVER_DESIGNATED_WINDOW:{s}")
     return sorted(set(problems))
 
 
@@ -215,39 +252,58 @@ def estimate(request: EstimateRequest, client: MetadataOnlyClient, client_versio
         retrieved_utc=now().isoformat(), client_version=client_version,
     )
     result.warnings.append(f"CREDITS_{NOT_EXPOSED}: the final charge equals the pre-credit estimate unless the portal shows credits")
+    import warnings
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _run_calls(request, client, secret, result)
+    for w in caught:  # every client warning is part of the auditable record
+        message = f"CLIENT_WARNING:{w.category.__name__}: {redact(str(w.message), secret)}"
+        if message not in result.warnings:
+            result.warnings.append(message)
+    return result
+
+
+def _run_calls(request: EstimateRequest, client: MetadataOnlyClient, secret: str | None, result: EstimateResult) -> None:
     try:
+        result.metadata_call_count += 1
         resolution = client.resolve(dataset=request.dataset, symbols=list(request.symbols), stype_in=request.stype_in,
                                     stype_out="instrument_id", start_date=request.start_utc[:10], end_date=request.end_utc[:10])
         result.raw_responses["symbology.resolve"] = resolution
-        problems = _resolution_problems(resolution, request.symbols)
+        first = dt.date.fromisoformat(request.start_utc[:10]) + dt.timedelta(days=1)  # session opens the evening before
+        last = dt.date.fromisoformat(request.end_utc[:10]) - dt.timedelta(days=1)
+        problems = _resolution_problems(resolution, request.symbols, first, last)
         result.symbol_resolution = {"problems": problems}
+        result.unresolved_symbols = sorted({p.split(":", 1)[1] for p in problems if ":" in p})
         if problems:
             result.warnings += problems
-            return result
+            return
         windows = request.windows or ((request.start_utc, request.end_utc),)
         cost, size, count = Decimal(0), 0, 0
         for start, end in windows:
             kw = dict(dataset=request.dataset, symbols=list(request.symbols), schema=request.schema,
                       stype_in=request.stype_in, start=start, end=end)
+            result.metadata_call_count += 1
             c = client.get_cost(mode=request.mode, **kw)
+            result.metadata_call_count += 1
             b = client.get_billable_size(**kw)
+            result.metadata_call_count += 1
             n = client.get_record_count(**kw)
             result.raw_responses.setdefault("windows", []).append({"start": start, "end": end, "get_cost": c, "get_billable_size": b, "get_record_count": n})
             if not (_finite_non_negative(c) and _finite_non_negative(b) and _finite_non_negative(n)):
                 result.warnings.append(f"NON_AUTHORITATIVE_RESPONSE for window {start}..{end}")
-                return result
+                return
             cost += Decimal(str(c))
             size += int(b)
             count += int(n)
     except Exception as exc:  # noqa: BLE001 - any failure is UNKNOWN, never zero
         result.warnings.append(f"REQUEST_FAILED: {redact(f'{type(exc).__name__}: {exc}', secret)}")
-        return result
+        return
     result.status = EstimateStatus.KNOWN
     result.estimated_cost_before_credits_usd = str(cost)
     result.estimated_charge_usd = str(cost)  # credits are not exposed; see warning
     result.billable_size_uncompressed_bytes = size
     result.record_count = count
-    return result
 
 
 # ------------------------------------------------------------------------------- the five alternatives

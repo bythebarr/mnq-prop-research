@@ -1,0 +1,13 @@
+{
+  "bytes": 165460,
+  "content_type": "text/html",
+  "http_status": 200,
+  "note": "raw capture only; not parsed, not a READY calendar",
+  "page_title": "The Fed - Meeting calendars and information",
+  "parsed": false,
+  "raw_path": "/home/user/mnq-prop-research/archives/calendars/federal_reserve/5a8df4ac3d837eb87085a31ebff88241136e0213bc147e363846b78c521243a0.html",
+  "raw_sha256": "5a8df4ac3d837eb87085a31ebff88241136e0213bc147e363846b78c521243a0",
+  "retrieved_utc": "2026-09-30T20:08:36.745765+00:00",
+  "status": "CAPTURED",
+  "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+}

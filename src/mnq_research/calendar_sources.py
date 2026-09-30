@@ -48,6 +48,8 @@ class CalendarSource:
     parsed_output_path: str | None = None
     parsed_sha256: str | None = None
     recurring_rule_substitute: bool = False
+    access_status: str = "NOT_ATTEMPTED"  # e.g. RAW_CAPTURED, ACCESS_BLOCKED_AKAMAI_403, ACCESS_BLOCKED_TIMEOUT
+    raw_captures: tuple = ()  # additional raw index pages captured (url, sha256, path, retrieved_utc)
     notes: str = ""
 
     def readiness_problems(self) -> list[str]:
@@ -77,7 +79,8 @@ def load_plan(path: str | Path) -> list[CalendarSource]:
     data: Mapping[str, Any] = load_mapping(path)
     sources = []
     for item in data["sources"]:
-        source = CalendarSource(**{**item, "status": SourceStatus(item.get("status", "PLANNED"))})
+        source = CalendarSource(**{**item, "status": SourceStatus(item.get("status", "PLANNED")),
+                                   "raw_captures": tuple(tuple(c) for c in item.get("raw_captures", ()))})
         if source.status is SourceStatus.READY and source.readiness_problems():
             raise ValueError(f"{source.source_id} is declared READY but fails: {source.readiness_problems()}")
         sources.append(source)

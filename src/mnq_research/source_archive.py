@@ -102,3 +102,26 @@ def archive_commission_source(
                                extract, str(rt), str(side), found, calculation, status)
     (out_dir / f"{digest}.manifest.json").write_text(json.dumps(asdict(manifest), indent=2, sort_keys=True))
     return manifest
+
+
+def capture_raw_source(url: str, out_dir: Path, fetch: Callable[[str], FetchedPage] = fetch_with_urllib,
+                       now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.timezone.utc)) -> dict:
+    """Archive one official page exactly as received (raw bytes named by SHA-256). No parsing, no interpretation."""
+    retrieved = now().isoformat()
+    try:
+        page = fetch(url)
+    except Exception as exc:  # noqa: BLE001
+        return {"url": url, "retrieved_utc": retrieved, "status": "FETCH_FAILED", "error": f"{type(exc).__name__}: {exc}"}
+    if page.status != 200 or not page.body:
+        return {"url": url, "retrieved_utc": retrieved, "status": "FETCH_FAILED", "error": f"HTTP {page.status}"}
+    digest = hashlib.sha256(page.body).hexdigest()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    raw_path = out_dir / f"{digest}.html"
+    raw_path.write_bytes(page.body)
+    title = re.search(r"(?is)<title[^>]*>(.*?)</title>", page.body.decode("utf-8", errors="replace"))
+    manifest = {"url": url, "retrieved_utc": retrieved, "status": "CAPTURED", "http_status": page.status,
+                "content_type": page.content_type, "bytes": len(page.body), "raw_sha256": digest, "raw_path": str(raw_path),
+                "page_title": html.unescape(title.group(1)).strip() if title else None,
+                "parsed": False, "note": "raw capture only; not parsed, not a READY calendar"}
+    (out_dir / f"{digest}.manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True))
+    return manifest

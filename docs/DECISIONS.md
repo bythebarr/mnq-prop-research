@@ -985,3 +985,64 @@ caught.
 **Reversible:** yes.
 **Status:** D-033 CONFIRMED. Round 16A is complete as planning only. Round 16B
 (ingestion) waits for an approved request, estimate hash and maximum charge.
+
+
+## D-035 — Round 16A metadata-only capture (2026-09-30)
+**Authorised by the owner:** authenticated Databento METADATA requests only,
+for alternatives A (definitions) and B (ohlcv-1m). No download, no batch job,
+no purchase, and no Round 16B.
+
+**Command:** `uv run --extra databento mnq data estimate --alternatives A,B`
+(the new `--alternatives` filter).
+
+**Result:**
+- **Artifact:** `outputs/estimates/databento_estimate_5fc1e4cc64682a29.json`
+  - payload SHA-256 `5fc1e4cc64682a292baaf6e5f6057665528f7f876bc062c2b524af1c6fed6da5`;
+  - file SHA-256 `fc3bd74a2e4a3c57ee7ad147dc5c5cd1367b8c8a99cd0be9d418e0c4e680d294`.
+- **A, definitions:** USD 0.009413488209; 5,945,680 bytes uncompressed;
+  11,434 records.
+- **B, ohlcv-1m:** USD 14.254553765059; 218,653,008 bytes uncompressed;
+  3,904,518 records.
+- **Combined:** USD 14.263967253268 before credits.
+- **Not exposed by the API:** compressed size and credits.
+- 4 metadata calls per alternative; client 0.87.0.
+
+**Estimator correction:**
+- The first run (artifact `..._2cafda475ccb5cec`, kept for the record)
+  returned UNKNOWN. It treated Databento's "partial" symbology flag as a
+  failure. For individual quarterly contracts, "partial" only means the
+  symbol exists for part of the 7-year range.
+- The rule now accepts a symbol only if it maps to exactly one instrument
+  whose dates cover the contract's designated roll window (plus 7 days for
+  prior-day levels). Anything else stays UNKNOWN. All 31 symbols passed.
+- A second run (`..._536ce67211cd2a97`, kept) produced the same figures but
+  did not record the client's Python warnings. The final run records them in
+  the artifact:
+  - the `mode` parameter is deprecated;
+  - for definitions, "range does not start at UTC midnight: definitions
+    effective on the start date may be missing". Here the start date is
+    2019-05-05 UTC, the Sunday before the first trade date. The 2019-05-06
+    00:00 UTC snapshot is inside the range.
+
+**Federal Reserve raw captures** are stored under
+`archives/calendars/federal_reserve/`. They are not parsed, so both sources
+stay PLANNED:
+- `fomccalendars.htm` (2021–2027 only);
+- `fomc_historical.htm` (an index page);
+- `testimony.htm` (an index page, 2010–2026).
+
+Still needed: the 2019–2020 per-year FOMC pages, and the per-year testimony
+pages plus committee records.
+
+**Blocked, recorded truthfully:**
+- Tradeify: `ACCESS_BLOCKED_CLOUDFLARE_403`;
+- CME: `ACCESS_BLOCKED_TIMEOUT`;
+- BLS: `ACCESS_BLOCKED_AKAMAI_403`.
+
+No search summary or recurring rule was substituted.
+
+**Deferred:** C, D and E (ohlcv-1s, trades and finer windows) until signal
+replay identifies the actual candidate timestamps.
+
+**Status:** capture complete. `purchase_approval` is NOT populated. Round 16B
+has not started.

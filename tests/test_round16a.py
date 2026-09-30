@@ -182,7 +182,7 @@ def test_contract_overlap_is_not_double_counted():
     e1 = de.alternatives(FIRST, LAST)[4]
     assert len(e1.windows) == 1930 and all(a < b for a, b in e1.windows)
     assert all(e1.windows[i][1] <= e1.windows[i + 1][0] for i in range(len(e1.windows) - 1))
-    short = de.EstimateRequest("E1", "x", "ohlcv-1s", CONTRACTS, e1.windows[0][0], e1.windows[2][1], e1.windows[:3])
+    short = de.EstimateRequest("E1", "x", "ohlcv-1s", CONTRACTS, e1.start_utc, e1.end_utc, e1.windows[:3])
     result, calls = run(short, cost=0.5, size=100, count=7)
     assert result.estimated_charge_usd == "1.5" and result.billable_size_uncompressed_bytes == 300  # disjoint windows summed once
     assert "NONE" in result.double_count_risk
@@ -208,7 +208,8 @@ def test_all_estimate_artifacts_are_hashed(tmp_path):
     committed = sorted((ROOT / "outputs" / "estimates").glob("databento_estimate_*.json"))
     assert committed and all(de.verify_artifact(p) for p in committed)
     for p in committed:
-        assert all(r["status"] == "UNKNOWN" and r["estimated_charge_usd"] is None for r in json.loads(p.read_text())["payload"]["results"])
+        for r in json.loads(p.read_text())["payload"]["results"]:
+            assert (r["status"] == "UNKNOWN") == (r["estimated_charge_usd"] is None)  # UNKNOWN never carries a number
 
 
 # =========================================================================== D-033 amendments
@@ -349,3 +350,83 @@ def test_redaction_removes_the_exact_key_even_in_an_unexpected_format():
     client = de.MetadataOnlyClient(FakeHistorical(calls, error=RuntimeError(f"denied: {odd_key}")))
     result = de.estimate(de.alternatives(FIRST, LAST)[1], client, "0.87.0", odd_key)
     assert odd_key not in json.dumps(de.asdict(result), default=str)
+
+
+def test_partial_resolution_is_accepted_only_when_the_designated_window_is_covered():
+    class Partial(FakeSymbology):
+        def __init__(self, calls, cover=True):
+            super().__init__(calls)
+            self.cover = cover
+
+        def resolve(self, **kw):
+            self.calls.append(("resolve", kw))
+            result = {}
+            for i, sym in enumerate(kw["symbols"]):
+                start, end = de.designated_window(sym, FIRST, LAST)
+                d0 = start - dt.timedelta(days=30)
+                d1 = end + dt.timedelta(days=20) if (self.cover or sym != "MNQZ2") else end - dt.timedelta(days=5)
+                result[sym] = [{"d0": d0.isoformat(), "d1": d1.isoformat(), "s": str(100 + i)}]
+            return {"result": result, "partial": list(kw["symbols"]), "not_found": []}
+
+    for cover, status in ((True, de.EstimateStatus.KNOWN), (False, de.EstimateStatus.UNKNOWN)):
+        calls = []
+        historical = FakeHistorical(calls)
+        historical.symbology = Partial(calls, cover)
+        result = de.estimate(de.alternatives(FIRST, LAST)[1], de.MetadataOnlyClient(historical), "0.87.0", FAKE_KEY)
+        assert result.status is status
+        if not cover:
+            assert result.unresolved_symbols == ["MNQZ2"] and result.estimated_charge_usd is None
+        else:
+            assert result.metadata_call_count == 4  # resolve + cost + size + count
+    assert de.designated_window("MNQZ6", FIRST, LAST) == (dt.date(2026, 9, 7), dt.date(2026, 9, 25))
+    assert de.designated_window("MNQH0", FIRST, LAST) == (dt.date(2019, 12, 9), dt.date(2020, 3, 16))
+
+
+def test_captured_federal_reserve_sources_are_hash_verified_and_remain_planned():
+    plan = {s.source_id: s for s in load_plan(ROOT / "configs" / "calendar_sources.yaml")}
+    for sid in ("FOMC_MEETINGS_STATEMENTS_PRESS_CONFERENCES", "FED_CHAIR_TESTIMONY"):
+        source = plan[sid]
+        assert source.access_status == "RAW_CAPTURED_NOT_PARSED" and source.status is SourceStatus.PLANNED
+        assert source.raw_captures
+        for url, digest, path, retrieved in source.raw_captures:
+            assert url.startswith("https://www.federalreserve.gov/")
+            assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == digest
+            manifest = json.loads((ROOT / path).with_suffix(".manifest.json").read_text())
+            assert manifest["raw_sha256"] == digest and manifest["parsed"] is False and manifest["retrieved_utc"] == retrieved
+        with pytest.raises(ValueError):
+            source.mark_ready()  # raw capture alone is never READY
+
+
+def test_blocked_sources_keep_their_truthful_statuses():
+    plan = {s.source_id: s for s in load_plan(ROOT / "configs" / "calendar_sources.yaml")}
+    assert plan["CME_EQUITY_INDEX_HOLIDAY_AND_EARLY_CLOSE"].access_status == "ACCESS_BLOCKED_TIMEOUT"
+    assert plan["SESSION_AND_ROLL_CALENDAR"].access_status == "ACCESS_BLOCKED_TIMEOUT"
+    for sid in ("BLS_EMPLOYMENT_SITUATION", "BLS_CPI", "BLS_PPI", "BLS_JOLTS", "BLS_RELEASE_SCHEDULES_BY_YEAR"):
+        assert plan[sid].access_status == "ACCESS_BLOCKED_AKAMAI_403" and not plan[sid].raw_captures
+    assert SPEC["commissions"]["source_access_status"] == "ACCESS_BLOCKED_CLOUDFLARE_403"
+    assert SPEC["commissions"]["source_archive_status"] == "REQUIRED_BEFORE_EXECUTABLE"
+
+
+def test_raw_capture_stores_exact_bytes_and_fails_closed(tmp_path):
+    from mnq_research.source_archive import capture_raw_source
+
+    body = b"<html><title>The Fed - Meeting calendars</title>2019</html>"
+    m = capture_raw_source("https://example.gov/x", tmp_path, lambda u: FetchedPage(u, 200, body, "text/html"))
+    assert m["status"] == "CAPTURED" and Path(m["raw_path"]).read_bytes() == body
+    assert m["raw_sha256"] == hashlib.sha256(body).hexdigest() and m["parsed"] is False
+    assert capture_raw_source("https://example.gov/y", tmp_path / "z", lambda u: FetchedPage(u, 403, b"", ""))["status"] == "FETCH_FAILED"
+    assert not (tmp_path / "z").exists()
+
+
+def test_the_captured_estimate_matches_the_specification_record():
+    da = SPEC["data_acquisition"]
+    path = ROOT / da["estimate_artifact"]
+    assert de.verify_artifact(path)
+    results = {r["request"]["alternative"]: r for r in json.loads(path.read_text())["payload"]["results"]}
+    assert set(results) == {"A", "B"}
+    assert results["A"]["estimated_charge_usd"] == da["estimated_charge_usd_a_definition"]
+    assert results["B"]["estimated_charge_usd"] == da["estimated_charge_usd_b_ohlcv_1m"]
+    for r in results.values():
+        assert r["status"] == "KNOWN" and tuple(r["request"]["symbols"]) == CONTRACTS and r["unresolved_symbols"] == []
+        assert r["request"]["stype_in"] == "raw_symbol" and r["client_version"] == "0.87.0" and r["metadata_call_count"] == 4
+    assert all(v is None for v in da["purchase_approval"].values() if v is not False)  # never populated here

@@ -1,0 +1,13 @@
+{
+  "bytes": 100534,
+  "content_type": "text/html",
+  "http_status": 200,
+  "note": "raw capture only; not parsed, not a READY calendar",
+  "page_title": "The Fed - Transcripts and other historical materials",
+  "parsed": false,
+  "raw_path": "/home/user/mnq-prop-research/archives/calendars/federal_reserve/41046b5eaf7cf0bb6ca6ecbdbfb04dd6650570790225f2b34c69ccb603be81b3.html",
+  "raw_sha256": "41046b5eaf7cf0bb6ca6ecbdbfb04dd6650570790225f2b34c69ccb603be81b3",
+  "retrieved_utc": "2026-09-30T20:08:37.662542+00:00",
+  "status": "CAPTURED",
+  "url": "https://www.federalreserve.gov/monetarypolicy/fomc_historical.htm"
+}

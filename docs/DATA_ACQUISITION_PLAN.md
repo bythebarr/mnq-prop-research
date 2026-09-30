@@ -252,3 +252,21 @@ READY for any source unless it has all of:
 - an explicit time-zone treatment.
 
 A recurring rule is never accepted as a history.
+
+### Round 16A capture result (2026-09-30)
+
+Only alternatives A and B were estimated, as authorised. Metadata calls only;
+nothing was downloaded or purchased.
+
+| | Definitions (A) | OHLCV-1m (B) |
+|---|---|---|
+| Estimated cost before credits | USD 0.009413488209 | USD 14.254553765059 |
+| Uncompressed size | 5,945,680 bytes | 218,653,008 bytes |
+| Records | 11,434 | 3,904,518 |
+| Unresolved symbols | none | none |
+
+Combined: **USD 14.263967253268** before credits. Compressed size and credits
+are not exposed by the API.
+
+The artifact is `outputs/estimates/databento_estimate_5fc1e4cc64682a29.json`.
+C, D and E are deferred until signal replay identifies candidate timestamps.

@@ -1,0 +1,13 @@
+{
+  "bytes": 87534,
+  "content_type": "text/html",
+  "http_status": 200,
+  "note": "raw capture only; not parsed, not a READY calendar",
+  "page_title": "Federal Reserve Board - Speeches and Testimony of Federal Reserve Officials",
+  "parsed": false,
+  "raw_path": "/home/user/mnq-prop-research/archives/calendars/federal_reserve/5961ab6e87a4c23b01403271757794f221ff78a15cd8705fb6ee46bec530d28a.html",
+  "raw_sha256": "5961ab6e87a4c23b01403271757794f221ff78a15cd8705fb6ee46bec530d28a",
+  "retrieved_utc": "2026-09-30T20:08:38.499656+00:00",
+  "status": "CAPTURED",
+  "url": "https://www.federalreserve.gov/newsevents/testimony.htm"
+}

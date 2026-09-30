@@ -1676,7 +1676,10 @@ data_acquisition:
     Start 2019-05-05T22:00:00Z (the 18:00 New York Globex open of trade date
     2019-05-06); end 2026-09-26T00:00:00Z exclusive (after the 17:00 New York
     close of trade date 2026-09-25).
-  estimate_status: UNKNOWN_UNTIL_AUTHORITATIVE_ESTIMATE_CAPTURED
+  estimate_status: KNOWN_FOR_ALTERNATIVES_A_AND_B   # Round 16A capture, 2026-09-30; C/D/E deferred until signal replay identifies candidate timestamps
+  estimate_artifact: outputs/estimates/databento_estimate_5fc1e4cc64682a29.json   # payload SHA-256 5fc1e4cc64682a292baaf6e5f6057665528f7f876bc062c2b524af1c6fed6da5
+  estimated_charge_usd_a_definition: "0.009413488209"   # before credits (credits not exposed by the API)
+  estimated_charge_usd_b_ohlcv_1m: "14.254553765059"
   purchase_approval:   # Round 16B may start only after the owner fills this in
     approved: false
     approved_by: null
@@ -1877,6 +1880,7 @@ commissions:
     NFA, clearing and commission charges), as supplied by the rule owner;
     retrieval date 2026-09-29. Not independently verified in this repository.
   source_url: https://help.tradeify.co/en/articles/10468315-trading-commission-fees   # identified Round 16A; raw archive not yet captured
+  source_access_status: ACCESS_BLOCKED_CLOUDFLARE_403   # 2026-09-30 from this environment; no search summary substituted
   source_archive_status: REQUIRED_BEFORE_EXECUTABLE   # archive URL, retrieval timestamp and content hash before ONE_CONTRACT_BACKTEST approval
   source_change_rule: A changed source page never updates these values silently; it requires a new decision and specification version.
   stress_multipliers: {BASE: "1.00", COMMISSION_STRESS_1_25X: "1.25", COMMISSION_STRESS_1_50X: "1.50"}
