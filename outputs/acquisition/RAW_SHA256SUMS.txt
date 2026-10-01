@@ -1,0 +1,8 @@
+654d4c4bb02087259ced74e94c5d5424e110304c41ce7efb1161cedd66b3afa0  data/raw/databento/definition/GLBX-20260930-9CGMLC885F/condition.json
+0bd776d3cd57cb36a0edfbd009454bcf496f097f9dd8192147a983b438b01add  data/raw/databento/definition/GLBX-20260930-9CGMLC885F/glbx-mdp3-20190505-20260925.definition.dbn.zst
+2dba0805b0bb69538140c4ccb36d4e096bb8e8006d82b7283c51d3a4435ddb4d  data/raw/databento/definition/GLBX-20260930-9CGMLC885F/manifest.json
+aa3a810f36af290377416476694537f1082369287686970df0de85cb399d3ad6  data/raw/databento/definition/GLBX-20260930-9CGMLC885F/metadata.json
+654d4c4bb02087259ced74e94c5d5424e110304c41ce7efb1161cedd66b3afa0  data/raw/databento/ohlcv_1m/GLBX-20261001-3SKXAGDCH3/condition.json
+e94303d789a342a3ba26951bf1913cad32fe2fc382890d5ab2e30a0acd8f3c00  data/raw/databento/ohlcv_1m/GLBX-20261001-3SKXAGDCH3/glbx-mdp3-20190505-20260925.ohlcv-1m.dbn.zst
+687ddd7bba3c12b47fc2fe89e452991f004db8ca8c3f441157d0c56f4cece2c0  data/raw/databento/ohlcv_1m/GLBX-20261001-3SKXAGDCH3/manifest.json
+423f338fec1379766ed1fcd5a85570107f7ce30f36124ebfc2e4c588d1b6168a  data/raw/databento/ohlcv_1m/GLBX-20261001-3SKXAGDCH3/metadata.json

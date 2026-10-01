@@ -272,7 +272,7 @@
         "windows": []
       },
       "request_key": "82a8058e6da8e1a0a7d9615022ad04b1ba04dc1fd3449fca1399a746c021008f",
-      "status": "DOWNLOADED_AND_VALIDATED",
+      "status": "COMPLETED_VERIFIED",
       "storage": "local container path data/raw/databento (git-ignored, licensed data); re-downloadable from job GLBX-20260930-9CGMLC885F while Databento retains it",
       "submit_format": {
         "compression": "zstd",
@@ -318,11 +318,78 @@
     },
     "f1144fed33aaba21911cb61f046a6462b27037cbb43442c6521cfe334a7fb749": {
       "approval_payload_sha256": "0fcae769b903268d0e8f4e9c7e9219053b1b12b85746ddf8b8038da3c047d0a5",
+      "available_files": [
+        {
+          "filename": "manifest.json",
+          "hash": "sha256:687ddd7bba3c12b47fc2fe89e452991f004db8ca8c3f441157d0c56f4cece2c0",
+          "size": 1475
+        },
+        {
+          "filename": "condition.json",
+          "hash": "sha256:654d4c4bb02087259ced74e94c5d5424e110304c41ce7efb1161cedd66b3afa0",
+          "size": 282944
+        },
+        {
+          "filename": "metadata.json",
+          "hash": "sha256:423f338fec1379766ed1fcd5a85570107f7ce30f36124ebfc2e4c588d1b6168a",
+          "size": 1321
+        },
+        {
+          "filename": "glbx-mdp3-20190505-20260925.ohlcv-1m.dbn.zst",
+          "hash": "sha256:e94303d789a342a3ba26951bf1913cad32fe2fc382890d5ab2e30a0acd8f3c00",
+          "size": 63921018
+        }
+      ],
       "client_version": "0.87.0",
       "cost_quoted_before_submission_usd": "14.254553765059",
       "databento_ts_received": "2026-10-01T14:41:46.733289000Z",
+      "download_problems": [],
+      "downloaded_utc": "2026-10-01T14:47:56.302571+00:00",
+      "files_listed_utc": "2026-10-01T14:47:48.660879+00:00",
+      "final_charge_usd": null,
+      "final_job": {
+        "id": "GLBX-20261001-3SKXAGDCH3",
+        "state": "done",
+        "ts_received": "2026-10-01T14:41:46.733289000Z"
+      },
+      "git_tracked": false,
       "intent_utc": "2026-10-01T14:41:45.194547+00:00",
       "job_id": "GLBX-20261001-3SKXAGDCH3",
+      "last_status_check": {
+        "checked_at_utc": "2026-10-01T14:47:46.679486+00:00",
+        "databento_state": "done",
+        "fields_returned_by_list_jobs": {
+          "id": "GLBX-20261001-3SKXAGDCH3",
+          "state": "done",
+          "ts_received": "2026-10-01T14:41:46.733289000Z"
+        }
+      },
+      "raw_files": [
+        {
+          "bytes": 282944,
+          "databento_hash": "sha256:654d4c4bb02087259ced74e94c5d5424e110304c41ce7efb1161cedd66b3afa0",
+          "path": "data/raw/databento/ohlcv_1m/GLBX-20261001-3SKXAGDCH3/condition.json",
+          "sha256": "654d4c4bb02087259ced74e94c5d5424e110304c41ce7efb1161cedd66b3afa0"
+        },
+        {
+          "bytes": 63921018,
+          "databento_hash": "sha256:e94303d789a342a3ba26951bf1913cad32fe2fc382890d5ab2e30a0acd8f3c00",
+          "path": "data/raw/databento/ohlcv_1m/GLBX-20261001-3SKXAGDCH3/glbx-mdp3-20190505-20260925.ohlcv-1m.dbn.zst",
+          "sha256": "e94303d789a342a3ba26951bf1913cad32fe2fc382890d5ab2e30a0acd8f3c00"
+        },
+        {
+          "bytes": 1475,
+          "databento_hash": "sha256:687ddd7bba3c12b47fc2fe89e452991f004db8ca8c3f441157d0c56f4cece2c0",
+          "path": "data/raw/databento/ohlcv_1m/GLBX-20261001-3SKXAGDCH3/manifest.json",
+          "sha256": "687ddd7bba3c12b47fc2fe89e452991f004db8ca8c3f441157d0c56f4cece2c0"
+        },
+        {
+          "bytes": 1321,
+          "databento_hash": "sha256:423f338fec1379766ed1fcd5a85570107f7ce30f36124ebfc2e4c588d1b6168a",
+          "path": "data/raw/databento/ohlcv_1m/GLBX-20261001-3SKXAGDCH3/metadata.json",
+          "sha256": "423f338fec1379766ed1fcd5a85570107f7ce30f36124ebfc2e4c588d1b6168a"
+        }
+      ],
       "request": {
         "alternative": "B",
         "dataset": "GLBX.MDP3",
@@ -368,7 +435,8 @@
         "windows": []
       },
       "request_key": "f1144fed33aaba21911cb61f046a6462b27037cbb43442c6521cfe334a7fb749",
-      "status": "SUBMITTED",
+      "status": "COMPLETED_VERIFIED",
+      "storage": "local container path data/raw/databento (git-ignored, licensed data); re-downloadable from job GLBX-20261001-3SKXAGDCH3 while Databento retains it",
       "submit_format": {
         "compression": "zstd",
         "delivery": "download",

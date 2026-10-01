@@ -1,0 +1,742 @@
+{
+  "approval_payload_sha256": "0fcae769b903268d0e8f4e9c7e9219053b1b12b85746ddf8b8038da3c047d0a5",
+  "configuration_sha256": "d54df58b88f7b44687a1c9fe51034f8ffbc2cb8adbf5c0cab8658cbcee28db61",
+  "contract_row_counts": {
+    "MNQH0": 94968,
+    "MNQH1": 121221,
+    "MNQH2": 129338,
+    "MNQH3": 134125,
+    "MNQH4": 135675,
+    "MNQH5": 138778,
+    "MNQH6": 142658,
+    "MNQM0": 104146,
+    "MNQM1": 127281,
+    "MNQM2": 143082,
+    "MNQM3": 130569,
+    "MNQM4": 143595,
+    "MNQM5": 148405,
+    "MNQM6": 142767,
+    "MNQM9": 42769,
+    "MNQU0": 108863,
+    "MNQU1": 124245,
+    "MNQU2": 137667,
+    "MNQU3": 133858,
+    "MNQU4": 145557,
+    "MNQU5": 149906,
+    "MNQU6": 151626,
+    "MNQU9": 93901,
+    "MNQZ0": 116119,
+    "MNQZ1": 125483,
+    "MNQZ2": 133411,
+    "MNQZ3": 140541,
+    "MNQZ4": 153057,
+    "MNQZ5": 140384,
+    "MNQZ6": 73423,
+    "MNQZ9": 97100
+  },
+  "coverage": {
+    "MNQH0": {
+      "designated_window": [
+        "2019-12-16",
+        "2020-03-15"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2019-06-27 16:39:00+00:00",
+      "last_timestamp_utc": "2020-03-20 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 5090
+      },
+      "rows_in_designated_window": 84610,
+      "rows_outside_designated_window_retained_for_audit": 10358,
+      "rows_total": 94968,
+      "weekday_dates_without_bars": [
+        "2019-12-25",
+        "2020-01-01"
+      ]
+    },
+    "MNQH1": {
+      "designated_window": [
+        "2020-12-14",
+        "2021-03-14"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2020-02-13 10:10:00+00:00",
+      "last_timestamp_utc": "2021-03-19 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 4367
+      },
+      "rows_in_designated_window": 85333,
+      "rows_outside_designated_window_retained_for_audit": 35888,
+      "rows_total": 121221,
+      "weekday_dates_without_bars": [
+        "2020-12-25",
+        "2021-01-01"
+      ]
+    },
+    "MNQH2": {
+      "designated_window": [
+        "2021-12-13",
+        "2022-03-13"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2020-12-28 23:01:00+00:00",
+      "last_timestamp_utc": "2022-03-18 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 1860
+      },
+      "rows_in_designated_window": 87840,
+      "rows_outside_designated_window_retained_for_audit": 41498,
+      "rows_total": 129338,
+      "weekday_dates_without_bars": [
+        "2021-12-24"
+      ]
+    },
+    "MNQH3": {
+      "designated_window": [
+        "2022-12-12",
+        "2023-03-12"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2021-12-28 20:56:00+00:00",
+      "last_timestamp_utc": "2023-03-17 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 3242
+      },
+      "rows_in_designated_window": 86458,
+      "rows_outside_designated_window_retained_for_audit": 47667,
+      "rows_total": 134125,
+      "weekday_dates_without_bars": [
+        "2022-12-26",
+        "2023-01-02"
+      ]
+    },
+    "MNQH4": {
+      "designated_window": [
+        "2023-12-11",
+        "2024-03-10"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2022-12-29 20:23:00+00:00",
+      "last_timestamp_utc": "2024-03-15 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 3240
+      },
+      "rows_in_designated_window": 86460,
+      "rows_outside_designated_window_retained_for_audit": 49215,
+      "rows_total": 135675,
+      "weekday_dates_without_bars": [
+        "2023-12-25",
+        "2024-01-01"
+      ]
+    },
+    "MNQH5": {
+      "designated_window": [
+        "2024-12-16",
+        "2025-03-16"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2024-01-02 15:32:00+00:00",
+      "last_timestamp_utc": "2025-03-21 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 3915
+      },
+      "rows_in_designated_window": 85785,
+      "rows_outside_designated_window_retained_for_audit": 52993,
+      "rows_total": 138778,
+      "weekday_dates_without_bars": [
+        "2024-12-25",
+        "2025-01-01"
+      ]
+    },
+    "MNQH6": {
+      "designated_window": [
+        "2025-12-15",
+        "2026-03-15"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2025-01-14 06:30:00+00:00",
+      "last_timestamp_utc": "2026-03-20 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 3465
+      },
+      "rows_in_designated_window": 86235,
+      "rows_outside_designated_window_retained_for_audit": 56423,
+      "rows_total": 142658,
+      "weekday_dates_without_bars": [
+        "2025-12-25",
+        "2026-01-01"
+      ]
+    },
+    "MNQM0": {
+      "designated_window": [
+        "2020-03-16",
+        "2020-06-14"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2019-06-20 12:40:00+00:00",
+      "last_timestamp_utc": "2020-06-19 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 4141
+      },
+      "rows_in_designated_window": 85560,
+      "rows_outside_designated_window_retained_for_audit": 18586,
+      "rows_total": 104146,
+      "weekday_dates_without_bars": [
+        "2020-04-10"
+      ]
+    },
+    "MNQM1": {
+      "designated_window": [
+        "2021-03-15",
+        "2021-06-13"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2020-04-01 19:55:00+00:00",
+      "last_timestamp_utc": "2021-06-18 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 1650
+      },
+      "rows_in_designated_window": 88050,
+      "rows_outside_designated_window_retained_for_audit": 39231,
+      "rows_total": 127281,
+      "weekday_dates_without_bars": []
+    },
+    "MNQM2": {
+      "designated_window": [
+        "2022-03-14",
+        "2022-06-12"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2021-04-16 12:12:00+00:00",
+      "last_timestamp_utc": "2022-06-17 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 1620
+      },
+      "rows_in_designated_window": 88080,
+      "rows_outside_designated_window_retained_for_audit": 55002,
+      "rows_total": 143082,
+      "weekday_dates_without_bars": [
+        "2022-04-15"
+      ]
+    },
+    "MNQM3": {
+      "designated_window": [
+        "2023-03-13",
+        "2023-06-11"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2022-03-21 14:54:00+00:00",
+      "last_timestamp_utc": "2023-06-16 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 705
+      },
+      "rows_in_designated_window": 88995,
+      "rows_outside_designated_window_retained_for_audit": 41574,
+      "rows_total": 130569,
+      "weekday_dates_without_bars": []
+    },
+    "MNQM4": {
+      "designated_window": [
+        "2024-03-11",
+        "2024-06-16"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 96600,
+      "first_timestamp_utc": "2023-03-31 15:41:00+00:00",
+      "last_timestamp_utc": "2024-06-21 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 1620
+      },
+      "rows_in_designated_window": 94980,
+      "rows_outside_designated_window_retained_for_audit": 48615,
+      "rows_total": 143595,
+      "weekday_dates_without_bars": [
+        "2024-03-29"
+      ]
+    },
+    "MNQM5": {
+      "designated_window": [
+        "2025-03-17",
+        "2025-06-15"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2024-03-20 23:48:00+00:00",
+      "last_timestamp_utc": "2025-06-20 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 1623
+      },
+      "rows_in_designated_window": 88077,
+      "rows_outside_designated_window_retained_for_audit": 60328,
+      "rows_total": 148405,
+      "weekday_dates_without_bars": [
+        "2025-04-18"
+      ]
+    },
+    "MNQM6": {
+      "designated_window": [
+        "2026-03-16",
+        "2026-06-14"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2025-04-09 05:24:00+00:00",
+      "last_timestamp_utc": "2026-06-18 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 705
+      },
+      "rows_in_designated_window": 88995,
+      "rows_outside_designated_window_retained_for_audit": 53772,
+      "rows_total": 142767,
+      "weekday_dates_without_bars": []
+    },
+    "MNQM9": {
+      "designated_window": [
+        "2019-05-06",
+        "2019-06-16"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 41400,
+      "first_timestamp_utc": "2019-05-05 22:03:00+00:00",
+      "last_timestamp_utc": "2019-06-21 13:28:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 2346
+      },
+      "rows_in_designated_window": 39054,
+      "rows_outside_designated_window_retained_for_audit": 3715,
+      "rows_total": 42769,
+      "weekday_dates_without_bars": []
+    },
+    "MNQU0": {
+      "designated_window": [
+        "2020-06-15",
+        "2020-09-13"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2019-11-01 13:54:00+00:00",
+      "last_timestamp_utc": "2020-09-18 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 1545
+      },
+      "rows_in_designated_window": 88156,
+      "rows_outside_designated_window_retained_for_audit": 20707,
+      "rows_total": 108863,
+      "weekday_dates_without_bars": []
+    },
+    "MNQU1": {
+      "designated_window": [
+        "2021-06-14",
+        "2021-09-12"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2020-07-23 17:54:00+00:00",
+      "last_timestamp_utc": "2021-09-17 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 637
+      },
+      "rows_in_designated_window": 89063,
+      "rows_outside_designated_window_retained_for_audit": 35182,
+      "rows_total": 124245,
+      "weekday_dates_without_bars": []
+    },
+    "MNQU2": {
+      "designated_window": [
+        "2022-06-13",
+        "2022-09-11"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2021-06-25 13:52:00+00:00",
+      "last_timestamp_utc": "2022-09-16 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 720
+      },
+      "rows_in_designated_window": 88980,
+      "rows_outside_designated_window_retained_for_audit": 48687,
+      "rows_total": 137667,
+      "weekday_dates_without_bars": []
+    },
+    "MNQU3": {
+      "designated_window": [
+        "2023-06-12",
+        "2023-09-10"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2022-07-13 18:13:00+00:00",
+      "last_timestamp_utc": "2023-09-15 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 946
+      },
+      "rows_in_designated_window": 88754,
+      "rows_outside_designated_window_retained_for_audit": 45104,
+      "rows_total": 133858,
+      "weekday_dates_without_bars": []
+    },
+    "MNQU4": {
+      "designated_window": [
+        "2024-06-17",
+        "2024-09-15"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2023-06-30 14:12:00+00:00",
+      "last_timestamp_utc": "2024-09-20 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 945
+      },
+      "rows_in_designated_window": 88755,
+      "rows_outside_designated_window_retained_for_audit": 56802,
+      "rows_total": 145557,
+      "weekday_dates_without_bars": []
+    },
+    "MNQU5": {
+      "designated_window": [
+        "2025-06-16",
+        "2025-09-14"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2024-07-03 16:34:00+00:00",
+      "last_timestamp_utc": "2025-09-19 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 945
+      },
+      "rows_in_designated_window": 88755,
+      "rows_outside_designated_window_retained_for_audit": 61151,
+      "rows_total": 149906,
+      "weekday_dates_without_bars": []
+    },
+    "MNQU6": {
+      "designated_window": [
+        "2026-06-15",
+        "2026-09-13"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2025-06-24 14:41:00+00:00",
+      "last_timestamp_utc": "2026-09-18 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 720
+      },
+      "rows_in_designated_window": 88980,
+      "rows_outside_designated_window_retained_for_audit": 62646,
+      "rows_total": 151626,
+      "weekday_dates_without_bars": []
+    },
+    "MNQU9": {
+      "designated_window": [
+        "2019-06-17",
+        "2019-09-15"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2019-05-06 17:18:00+00:00",
+      "last_timestamp_utc": "2019-09-20 13:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 2955
+      },
+      "rows_in_designated_window": 86745,
+      "rows_outside_designated_window_retained_for_audit": 7156,
+      "rows_total": 93901,
+      "weekday_dates_without_bars": []
+    },
+    "MNQZ0": {
+      "designated_window": [
+        "2020-09-14",
+        "2020-12-13"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2020-01-15 05:32:00+00:00",
+      "last_timestamp_utc": "2020-12-18 14:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 1412
+      },
+      "rows_in_designated_window": 88288,
+      "rows_outside_designated_window_retained_for_audit": 27831,
+      "rows_total": 116119,
+      "weekday_dates_without_bars": []
+    },
+    "MNQZ1": {
+      "designated_window": [
+        "2021-09-13",
+        "2021-12-12"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2020-09-21 12:06:00+00:00",
+      "last_timestamp_utc": "2021-12-17 14:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 466
+      },
+      "rows_in_designated_window": 89234,
+      "rows_outside_designated_window_retained_for_audit": 36249,
+      "rows_total": 125483,
+      "weekday_dates_without_bars": []
+    },
+    "MNQZ2": {
+      "designated_window": [
+        "2022-09-12",
+        "2022-12-11"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2021-09-20 07:33:00+00:00",
+      "last_timestamp_utc": "2022-12-16 14:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 465
+      },
+      "rows_in_designated_window": 89235,
+      "rows_outside_designated_window_retained_for_audit": 44176,
+      "rows_total": 133411,
+      "weekday_dates_without_bars": []
+    },
+    "MNQZ3": {
+      "designated_window": [
+        "2023-09-11",
+        "2023-12-10"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2022-09-20 22:39:00+00:00",
+      "last_timestamp_utc": "2023-12-15 14:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 465
+      },
+      "rows_in_designated_window": 89235,
+      "rows_outside_designated_window_retained_for_audit": 51306,
+      "rows_total": 140541,
+      "weekday_dates_without_bars": []
+    },
+    "MNQZ4": {
+      "designated_window": [
+        "2024-09-16",
+        "2024-12-15"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2023-09-22 03:20:00+00:00",
+      "last_timestamp_utc": "2024-12-20 14:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 465
+      },
+      "rows_in_designated_window": 89235,
+      "rows_outside_designated_window_retained_for_audit": 63822,
+      "rows_total": 153057,
+      "weekday_dates_without_bars": []
+    },
+    "MNQZ5": {
+      "designated_window": [
+        "2025-09-15",
+        "2025-12-14"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2024-10-09 16:09:00+00:00",
+      "last_timestamp_utc": "2025-12-19 14:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 1110
+      },
+      "rows_in_designated_window": 88590,
+      "rows_outside_designated_window_retained_for_audit": 51794,
+      "rows_total": 140384,
+      "weekday_dates_without_bars": []
+    },
+    "MNQZ6": {
+      "designated_window": [
+        "2026-09-14",
+        "2026-09-25"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 13800,
+      "first_timestamp_utc": "2025-10-01 17:04:00+00:00",
+      "last_timestamp_utc": "2026-09-25 20:59:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 0
+      },
+      "rows_in_designated_window": 13800,
+      "rows_outside_designated_window_retained_for_audit": 59623,
+      "rows_total": 73423,
+      "weekday_dates_without_bars": []
+    },
+    "MNQZ9": {
+      "designated_window": [
+        "2019-09-16",
+        "2019-12-15"
+      ],
+      "edge_dates_covered": true,
+      "expected_scheduled_minutes": 89700,
+      "first_timestamp_utc": "2019-06-14 17:23:00+00:00",
+      "last_timestamp_utc": "2019-12-20 14:29:00+00:00",
+      "missing_minutes": {
+        "UNCLASSIFIED_MISSING_PENDING_CALENDAR": 1854
+      },
+      "rows_in_designated_window": 87846,
+      "rows_outside_designated_window_retained_for_audit": 9254,
+      "rows_total": 97100,
+      "weekday_dates_without_bars": []
+    }
+  },
+  "created_utc": "2026-10-01T14:56:33.821623+00:00",
+  "definition_instrument_ids": {
+    "MNQH0": [
+      8196
+    ],
+    "MNQH1": [
+      6227
+    ],
+    "MNQH2": [
+      7575
+    ],
+    "MNQH3": [
+      8071
+    ],
+    "MNQH4": [
+      7101
+    ],
+    "MNQH5": [
+      42003617
+    ],
+    "MNQH6": [
+      42004946
+    ],
+    "MNQM0": [
+      8204
+    ],
+    "MNQM1": [
+      9485
+    ],
+    "MNQM2": [
+      13505
+    ],
+    "MNQM3": [
+      4973
+    ],
+    "MNQM4": [
+      10
+    ],
+    "MNQM5": [
+      42009475
+    ],
+    "MNQM6": [
+      42004936
+    ],
+    "MNQM9": [
+      8078
+    ],
+    "MNQU0": [
+      13081
+    ],
+    "MNQU1": [
+      3601
+    ],
+    "MNQU2": [
+      7688
+    ],
+    "MNQU3": [
+      9235
+    ],
+    "MNQU4": [
+      13941
+    ],
+    "MNQU5": [
+      42003472
+    ],
+    "MNQU6": [
+      42004800
+    ],
+    "MNQU9": [
+      8084
+    ],
+    "MNQZ0": [
+      17706
+    ],
+    "MNQZ1": [
+      1447
+    ],
+    "MNQZ2": [
+      20332
+    ],
+    "MNQZ3": [
+      34070
+    ],
+    "MNQZ4": [
+      42008411
+    ],
+    "MNQZ5": [
+      42001149
+    ],
+    "MNQZ6": [
+      42005282
+    ],
+    "MNQZ9": [
+      8107
+    ]
+  },
+  "exclusions": [],
+  "ingestion_code_git_commit": "d513125023f8483fdd23b50bfd1c42e5e04f4635",
+  "kind": "MNQ_INGESTION_MANIFEST",
+  "missing_minute_classification": "UNCLASSIFIED_MISSING_PENDING_CALENDAR for every absent scheduled minute (no calendar evidence yet); none labelled VERIFIED_NO_TRADE",
+  "output_content_sha256": "199938b5a1330fc9faf47856801817251bb3e267501f6a6c8395d5d9cee7cab7",
+  "output_file_sha256": "a3cef9e344e70173b98136eebb5f92cef22be574f58b4f0d98d9fadbe41030b7",
+  "output_path": "data/processed/mnq_ohlcv_1m_canonical_199938b5a1330fc9.parquet",
+  "price_adjustment": "NONE: original unadjusted individual-contract prices; no continuous series",
+  "raw_ingest_module_sha256": "9de6f9d21c689e9ef1936f19632f3b57c78f5effd75f1f6f72f0038030fa7426",
+  "raw_inputs": [
+    {
+      "bytes": 80979,
+      "databento_hash": "sha256:0bd776d3cd57cb36a0edfbd009454bcf496f097f9dd8192147a983b438b01add",
+      "job_id": "GLBX-20260930-9CGMLC885F",
+      "path": "data/raw/databento/definition/GLBX-20260930-9CGMLC885F/glbx-mdp3-20190505-20260925.definition.dbn.zst",
+      "schema": "definition",
+      "sha256": "0bd776d3cd57cb36a0edfbd009454bcf496f097f9dd8192147a983b438b01add"
+    },
+    {
+      "bytes": 63921018,
+      "databento_hash": "sha256:e94303d789a342a3ba26951bf1913cad32fe2fc382890d5ab2e30a0acd8f3c00",
+      "job_id": "GLBX-20261001-3SKXAGDCH3",
+      "path": "data/raw/databento/ohlcv_1m/GLBX-20261001-3SKXAGDCH3/glbx-mdp3-20190505-20260925.ohlcv-1m.dbn.zst",
+      "schema": "ohlcv-1m",
+      "sha256": "e94303d789a342a3ba26951bf1913cad32fe2fc382890d5ab2e30a0acd8f3c00"
+    }
+  ],
+  "row_count": 3904518,
+  "rows_in_designated_windows": 2608163,
+  "validation": {
+    "coverage": {
+      "issues": [],
+      "passed": true
+    },
+    "cross_check": {
+      "ohlcv_ids_not_in_definitions": [],
+      "passed": true
+    },
+    "definition": {
+      "issues": [],
+      "job_record_count": null,
+      "passed": true,
+      "records_decoded": 11434
+    },
+    "ohlcv-1m": {
+      "issues": [],
+      "job_record_count": null,
+      "passed": true,
+      "records_decoded": 3904518
+    }
+  },
+  "validation_status": "PASSED"
+}
