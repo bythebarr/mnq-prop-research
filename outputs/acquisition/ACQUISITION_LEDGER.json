@@ -25,6 +25,152 @@
       ],
       "client_version": "0.87.0",
       "cost_quoted_before_submission_usd": "0.009413488209",
+      "definitions_validation": {
+        "instrument_ids": {
+          "MNQH0": [
+            8196
+          ],
+          "MNQH1": [
+            6227
+          ],
+          "MNQH2": [
+            7575
+          ],
+          "MNQH3": [
+            8071
+          ],
+          "MNQH4": [
+            7101
+          ],
+          "MNQH5": [
+            42003617
+          ],
+          "MNQH6": [
+            42004946
+          ],
+          "MNQM0": [
+            8204
+          ],
+          "MNQM1": [
+            9485
+          ],
+          "MNQM2": [
+            13505
+          ],
+          "MNQM3": [
+            4973
+          ],
+          "MNQM4": [
+            10
+          ],
+          "MNQM5": [
+            42009475
+          ],
+          "MNQM6": [
+            42004936
+          ],
+          "MNQM9": [
+            8078
+          ],
+          "MNQU0": [
+            13081
+          ],
+          "MNQU1": [
+            3601
+          ],
+          "MNQU2": [
+            7688
+          ],
+          "MNQU3": [
+            9235
+          ],
+          "MNQU4": [
+            13941
+          ],
+          "MNQU5": [
+            42003472
+          ],
+          "MNQU6": [
+            42004800
+          ],
+          "MNQU9": [
+            8084
+          ],
+          "MNQZ0": [
+            17706
+          ],
+          "MNQZ1": [
+            1447
+          ],
+          "MNQZ2": [
+            20332
+          ],
+          "MNQZ3": [
+            34070
+          ],
+          "MNQZ4": [
+            42008411
+          ],
+          "MNQZ5": [
+            42001149
+          ],
+          "MNQZ6": [
+            42005282
+          ],
+          "MNQZ9": [
+            8107
+          ]
+        },
+        "issues": [],
+        "metadata": {
+          "dataset": "GLBX.MDP3",
+          "end_ns": 1790380800000000000,
+          "not_found": [],
+          "schema": "definition",
+          "start_ns": 1557014400000000000,
+          "stype_in": "raw_symbol",
+          "symbol_count": 31
+        },
+        "passed": true,
+        "record_types": [
+          19
+        ],
+        "records_decoded": 11434,
+        "records_per_symbol": {
+          "MNQH0": 276,
+          "MNQH1": 402,
+          "MNQH2": 402,
+          "MNQH3": 402,
+          "MNQH4": 402,
+          "MNQH5": 410,
+          "MNQH6": 406,
+          "MNQM0": 354,
+          "MNQM1": 402,
+          "MNQM2": 402,
+          "MNQM3": 402,
+          "MNQM4": 408,
+          "MNQM5": 411,
+          "MNQM6": 407,
+          "MNQM9": 42,
+          "MNQU0": 402,
+          "MNQU1": 402,
+          "MNQU2": 402,
+          "MNQU3": 402,
+          "MNQU4": 410,
+          "MNQU5": 405,
+          "MNQU6": 407,
+          "MNQU9": 120,
+          "MNQZ0": 402,
+          "MNQZ1": 402,
+          "MNQZ2": 402,
+          "MNQZ3": 402,
+          "MNQZ4": 410,
+          "MNQZ5": 406,
+          "MNQZ6": 334,
+          "MNQZ9": 198
+        },
+        "validated_utc": "2026-10-01T14:41:31.151200+00:00"
+      },
       "download_failure_detail": {
         "cause": "OUTBOUND_PROXY_DENIED_CONNECT",
         "error": "ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 403 Forbidden'))",
@@ -34,14 +180,9 @@
         "proxy_recent_failure": "gateway answered 403 to CONNECT (policy denial or upstream failure), 2026-10-01T13:51:13Z onward",
         "retry_policy": "re-download the SAME job's listed files once the session's network policy allows the download; never resubmit"
       },
-      "download_problems": [
-        "DOWNLOAD_ERROR:condition.json:BentoError",
-        "DOWNLOAD_ERROR:glbx-mdp3-20190505-20260925.definition.dbn.zst:BentoError",
-        "DOWNLOAD_ERROR:manifest.json:BentoError",
-        "DOWNLOAD_ERROR:metadata.json:BentoError"
-      ],
-      "downloaded_utc": "2026-10-01T13:51:19.488779+00:00",
-      "files_listed_utc": "2026-10-01T13:51:06.459481+00:00",
+      "download_problems": [],
+      "downloaded_utc": "2026-10-01T14:41:30.879123+00:00",
+      "files_listed_utc": "2026-10-01T14:41:22.451445+00:00",
       "final_charge_usd": null,
       "final_job": {
         "id": "GLBX-20260930-9CGMLC885F",
@@ -60,7 +201,32 @@
           "ts_received": "2026-09-30T20:42:27.948345000Z"
         }
       },
-      "raw_files": [],
+      "raw_files": [
+        {
+          "bytes": 282944,
+          "databento_hash": "sha256:654d4c4bb02087259ced74e94c5d5424e110304c41ce7efb1161cedd66b3afa0",
+          "path": "data/raw/databento/definition/GLBX-20260930-9CGMLC885F/condition.json",
+          "sha256": "654d4c4bb02087259ced74e94c5d5424e110304c41ce7efb1161cedd66b3afa0"
+        },
+        {
+          "bytes": 80979,
+          "databento_hash": "sha256:0bd776d3cd57cb36a0edfbd009454bcf496f097f9dd8192147a983b438b01add",
+          "path": "data/raw/databento/definition/GLBX-20260930-9CGMLC885F/glbx-mdp3-20190505-20260925.definition.dbn.zst",
+          "sha256": "0bd776d3cd57cb36a0edfbd009454bcf496f097f9dd8192147a983b438b01add"
+        },
+        {
+          "bytes": 1478,
+          "databento_hash": "sha256:2dba0805b0bb69538140c4ccb36d4e096bb8e8006d82b7283c51d3a4435ddb4d",
+          "path": "data/raw/databento/definition/GLBX-20260930-9CGMLC885F/manifest.json",
+          "sha256": "2dba0805b0bb69538140c4ccb36d4e096bb8e8006d82b7283c51d3a4435ddb4d"
+        },
+        {
+          "bytes": 1323,
+          "databento_hash": "sha256:aa3a810f36af290377416476694537f1082369287686970df0de85cb399d3ad6",
+          "path": "data/raw/databento/definition/GLBX-20260930-9CGMLC885F/metadata.json",
+          "sha256": "aa3a810f36af290377416476694537f1082369287686970df0de85cb399d3ad6"
+        }
+      ],
       "request": {
         "alternative": "A",
         "dataset": "GLBX.MDP3",
@@ -106,7 +272,7 @@
         "windows": []
       },
       "request_key": "82a8058e6da8e1a0a7d9615022ad04b1ba04dc1fd3449fca1399a746c021008f",
-      "status": "DOWNLOAD_FAILED",
+      "status": "DOWNLOADED_AND_VALIDATED",
       "storage": "local container path data/raw/databento (git-ignored, licensed data); re-downloadable from job GLBX-20260930-9CGMLC885F while Databento retains it",
       "submit_format": {
         "compression": "zstd",
@@ -147,6 +313,101 @@
         "ts_process_start": null,
         "ts_queued": null,
         "ts_received": "2026-09-30T20:42:27.948345000Z",
+        "user_id": "MM85RD4E"
+      }
+    },
+    "f1144fed33aaba21911cb61f046a6462b27037cbb43442c6521cfe334a7fb749": {
+      "approval_payload_sha256": "0fcae769b903268d0e8f4e9c7e9219053b1b12b85746ddf8b8038da3c047d0a5",
+      "client_version": "0.87.0",
+      "cost_quoted_before_submission_usd": "14.254553765059",
+      "databento_ts_received": "2026-10-01T14:41:46.733289000Z",
+      "intent_utc": "2026-10-01T14:41:45.194547+00:00",
+      "job_id": "GLBX-20261001-3SKXAGDCH3",
+      "request": {
+        "alternative": "B",
+        "dataset": "GLBX.MDP3",
+        "description": "Complete OHLCV-1m history, individual contracts, unadjusted",
+        "end_utc": "2026-09-26T00:00:00Z",
+        "mode": "historical",
+        "schema": "ohlcv-1m",
+        "start_utc": "2019-05-05T22:00:00Z",
+        "stype_in": "raw_symbol",
+        "symbols": [
+          "MNQM9",
+          "MNQU9",
+          "MNQZ9",
+          "MNQH0",
+          "MNQM0",
+          "MNQU0",
+          "MNQZ0",
+          "MNQH1",
+          "MNQM1",
+          "MNQU1",
+          "MNQZ1",
+          "MNQH2",
+          "MNQM2",
+          "MNQU2",
+          "MNQZ2",
+          "MNQH3",
+          "MNQM3",
+          "MNQU3",
+          "MNQZ3",
+          "MNQH4",
+          "MNQM4",
+          "MNQU4",
+          "MNQZ4",
+          "MNQH5",
+          "MNQM5",
+          "MNQU5",
+          "MNQZ5",
+          "MNQH6",
+          "MNQM6",
+          "MNQU6",
+          "MNQZ6"
+        ],
+        "windows": []
+      },
+      "request_key": "f1144fed33aaba21911cb61f046a6462b27037cbb43442c6521cfe334a7fb749",
+      "status": "SUBMITTED",
+      "submit_format": {
+        "compression": "zstd",
+        "delivery": "download",
+        "encoding": "dbn",
+        "split_duration": "none",
+        "stype_out": "instrument_id"
+      },
+      "submitted_job": {
+        "actual_size": null,
+        "bill_id": null,
+        "billed_size": null,
+        "compression": "zstd",
+        "cost_usd": null,
+        "dataset": "GLBX.MDP3",
+        "delivery": "download",
+        "encoding": "dbn",
+        "end": "2026-09-26T00:00:00.000000000Z",
+        "id": "GLBX-20261001-3SKXAGDCH3",
+        "limit": null,
+        "map_symbols": false,
+        "package_size": null,
+        "packaging": null,
+        "pretty_px": false,
+        "pretty_ts": false,
+        "record_count": null,
+        "schema": "ohlcv-1m",
+        "split_duration": null,
+        "split_size": null,
+        "split_symbols": false,
+        "start": "2019-05-05T22:00:00.000000000Z",
+        "state": "queued",
+        "stype_in": "raw_symbol",
+        "stype_out": "instrument_id",
+        "symbols": "MNQM9,MNQU9,MNQZ9,MNQH0,MNQM0,MNQU0,MNQZ0,MNQH1,MNQM1,MNQU1,MNQZ1,MNQH2,MNQM2,MNQU2,MNQZ2,MNQH3,MNQM3,MNQU3,MNQZ3,MNQH4,MNQM4,MNQU4,MNQZ4,MNQH5,MNQM5,MNQU5,MNQZ5,MNQH6,MNQM6,MNQU6,MNQZ6",
+        "ts_expiration": null,
+        "ts_process_done": null,
+        "ts_process_start": null,
+        "ts_queued": null,
+        "ts_received": "2026-10-01T14:41:46.733289000Z",
         "user_id": "MM85RD4E"
       }
     }
