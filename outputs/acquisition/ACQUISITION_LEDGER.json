@@ -5,6 +5,15 @@
       "cost_quoted_before_submission_usd": "0.009413488209",
       "intent_utc": "2026-09-30T20:42:27.372231+00:00",
       "job_id": "GLBX-20260930-9CGMLC885F",
+      "last_status_check": {
+        "checked_at_utc": "2026-10-01T11:01:58.082745+00:00",
+        "databento_state": "done",
+        "fields_returned_by_list_jobs": {
+          "id": "GLBX-20260930-9CGMLC885F",
+          "state": "done",
+          "ts_received": "2026-09-30T20:42:27.948345000Z"
+        }
+      },
       "request": {
         "alternative": "A",
         "dataset": "GLBX.MDP3",
