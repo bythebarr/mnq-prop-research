@@ -1,12 +1,58 @@
 {
   "entries": {
     "82a8058e6da8e1a0a7d9615022ad04b1ba04dc1fd3449fca1399a746c021008f": {
+      "available_files": [
+        {
+          "filename": "manifest.json",
+          "hash": "sha256:2dba0805b0bb69538140c4ccb36d4e096bb8e8006d82b7283c51d3a4435ddb4d",
+          "size": 1478
+        },
+        {
+          "filename": "condition.json",
+          "hash": "sha256:654d4c4bb02087259ced74e94c5d5424e110304c41ce7efb1161cedd66b3afa0",
+          "size": 282944
+        },
+        {
+          "filename": "metadata.json",
+          "hash": "sha256:aa3a810f36af290377416476694537f1082369287686970df0de85cb399d3ad6",
+          "size": 1323
+        },
+        {
+          "filename": "glbx-mdp3-20190505-20260925.definition.dbn.zst",
+          "hash": "sha256:0bd776d3cd57cb36a0edfbd009454bcf496f097f9dd8192147a983b438b01add",
+          "size": 80979
+        }
+      ],
       "client_version": "0.87.0",
       "cost_quoted_before_submission_usd": "0.009413488209",
+      "download_failure_detail": {
+        "cause": "OUTBOUND_PROXY_DENIED_CONNECT",
+        "error": "ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 403 Forbidden'))",
+        "files_written": 0,
+        "host": "api.databento.com:443",
+        "job_resubmitted": false,
+        "proxy_recent_failure": "gateway answered 403 to CONNECT (policy denial or upstream failure), 2026-10-01T13:51:13Z onward",
+        "retry_policy": "re-download the SAME job's listed files once the session's network policy allows the download; never resubmit"
+      },
+      "download_problems": [
+        "DOWNLOAD_ERROR:condition.json:BentoError",
+        "DOWNLOAD_ERROR:glbx-mdp3-20190505-20260925.definition.dbn.zst:BentoError",
+        "DOWNLOAD_ERROR:manifest.json:BentoError",
+        "DOWNLOAD_ERROR:metadata.json:BentoError"
+      ],
+      "downloaded_utc": "2026-10-01T13:51:19.488779+00:00",
+      "files_listed_utc": "2026-10-01T13:51:06.459481+00:00",
+      "final_charge_usd": null,
+      "final_job": {
+        "id": "GLBX-20260930-9CGMLC885F",
+        "state": "done",
+        "ts_received": "2026-09-30T20:42:27.948345000Z"
+      },
+      "git_tracked": false,
       "intent_utc": "2026-09-30T20:42:27.372231+00:00",
       "job_id": "GLBX-20260930-9CGMLC885F",
       "last_status_check": {
-        "checked_at_utc": "2026-10-01T11:01:58.082745+00:00",
+        "checked_at_utc": "2026-10-01T13:51:05.830222+00:00",
         "databento_state": "done",
         "fields_returned_by_list_jobs": {
           "id": "GLBX-20260930-9CGMLC885F",
@@ -14,6 +60,7 @@
           "ts_received": "2026-09-30T20:42:27.948345000Z"
         }
       },
+      "raw_files": [],
       "request": {
         "alternative": "A",
         "dataset": "GLBX.MDP3",
@@ -59,7 +106,8 @@
         "windows": []
       },
       "request_key": "82a8058e6da8e1a0a7d9615022ad04b1ba04dc1fd3449fca1399a746c021008f",
-      "status": "SUBMITTED",
+      "status": "DOWNLOAD_FAILED",
+      "storage": "local container path data/raw/databento (git-ignored, licensed data); re-downloadable from job GLBX-20260930-9CGMLC885F while Databento retains it",
       "submit_format": {
         "compression": "zstd",
         "delivery": "download",
