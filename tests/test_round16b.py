@@ -505,3 +505,32 @@ def test_an_existing_raw_file_identical_to_the_listing_is_kept_without_redownloa
     entry = da.download_job_files(ledger.entry(entry["request_key"]), batch, ledger, root)
     entry = da.download_job_files(entry, batch, ledger, root)  # e.g. a rerun after an interrupted ledger write
     assert entry["status"] == "DOWNLOADED_UNVALIDATED" and batch.downloads == [entry["job_id"]]
+
+
+def test_a_retry_downloads_nothing_if_the_listing_differs_from_the_ledger_record(tmp_path):
+    spec, root = workspace(tmp_path)
+    _, _, requests = run_preflight(spec, root)
+    batch = FakeBatch(root)
+    ledger, entry = submitted_definitions(root, requests, batch)
+    recorded = [{**f, "hash": "sha256:" + "1" * 64} for f in batch.list_files(entry["job_id"])]
+    entry = ledger.entry(entry["request_key"])
+    entry.update(status="DOWNLOAD_FAILED", available_files=recorded)  # e.g. the earlier proxy-refused attempt
+    entry = da.download_job_files(entry, batch, ledger, root)
+    assert entry["status"] == "DOWNLOAD_FAILED" and entry["download_problems"] == ["LISTING_DIFFERS_FROM_LEDGER_RECORD"]
+    assert batch.downloads == [] and entry["available_files"] == recorded  # the ledger record is never replaced
+    entry["available_files"] = batch.list_files(entry["job_id"])  # identical record: the retry downloads and verifies
+    assert da.download_job_files(entry, batch, ledger, root)["status"] == "DOWNLOADED_UNVALIDATED"
+
+
+def test_the_ohlcv_gate_blocks_an_existing_local_ohlcv_artifact(tmp_path, monkeypatch):
+    spec, root = workspace(tmp_path)
+    _, _, requests = run_preflight(spec, root)
+    batch = FakeBatch(root)
+    ledger, _ = submitted_definitions(root, requests, batch)
+    _fake_definitions(monkeypatch, requests)
+    stray = root / da.RAW_ROOT / "ohlcv_1m" / "GLBX-OTHER" / "x.dbn.zst"
+    stray.parent.mkdir(parents=True)
+    stray.write_bytes(b"x")
+    result = staged(spec, root, batch, ledger)
+    assert result["outcome"] == "OHLCV_SUBMISSION_BLOCKED" and any("OHLCV_LOCAL_ARTIFACT_ALREADY_EXISTS" in p for p in result["problems"])
+    assert [s["schema"] for s in batch.submits] == ["definition"]

@@ -292,7 +292,15 @@ def download_job_files(entry: dict[str, Any], batch: Any, ledger: Ledger, root: 
     """
     key, job_id = entry["request_key"], entry["job_id"]
     listed = batch.list_files(job_id)
-    entry["available_files"] = [{"filename": f["filename"], "size": f["size"], "hash": f["hash"]} for f in listed]
+    current = [{"filename": f["filename"], "size": f["size"], "hash": f["hash"]} for f in listed]
+    recorded = entry.get("available_files")
+    if recorded is not None and sorted(map(de.canonical_json, recorded)) != sorted(map(de.canonical_json, current)):
+        # the ledger already fixed the exact files (sizes, SHA-256) of this job: a changed listing downloads nothing
+        entry.update(status="DOWNLOAD_FAILED", download_problems=["LISTING_DIFFERS_FROM_LEDGER_RECORD"], relisted_files=current,
+                     files_relisted_utc=_now())
+        ledger.put(key, entry)
+        return entry
+    entry["available_files"] = current
     entry["files_listed_utc"] = _now()
     if not listed:
         entry["status"] = "DONE_WITHOUT_AVAILABLE_FILES"
@@ -373,6 +381,9 @@ def ohlcv_submission_problems(ledger: Ledger, approved: list[de.EstimateRequest]
         problems.append(f"DEFINITIONS_NOT_DOWNLOADED_AND_VALIDATED:{d.get('status')}")
     if ledger.entry(request_key(ohlcv)) is not None:
         problems.append("OHLCV_LEDGER_ENTRY_ALREADY_EXISTS")
+    local = root / RAW_ROOT / ohlcv.schema.replace("-", "_")
+    if local.exists() and any(local.iterdir()):
+        problems.append(f"OHLCV_LOCAL_ARTIFACT_ALREADY_EXISTS:{local.relative_to(root)}")
     known = {e.get("job_id") for e in ledger.data["entries"].values()}
     since = min((e["intent_utc"] for e in ledger.data["entries"].values()), default="2026-09-30T00:00:00Z")
     unknown = [j.get("id") for j in batch.list_jobs(states=JOB_STATES, since=since) if j.get("id") not in known]
