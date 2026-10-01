@@ -43,6 +43,11 @@ RAW_ROOT = Path("data/raw/databento")
 SUBMIT_FORMAT = {"encoding": "dbn", "compression": "zstd", "split_duration": "none", "delivery": "download",
                  "stype_out": "instrument_id"}
 APPROVED_SCHEMAS = ("definition", "ohlcv-1m")
+JOB_STATES = "received,queued,processing,done,expired"
+# Terminal outcomes of a downloaded stage. Only DOWNLOADED_AND_VALIDATED definitions permit the OHLCV-1m submission.
+DOWNLOADED_AND_VALIDATED = "DOWNLOADED_AND_VALIDATED"
+STAGE_OUTCOMES = (DOWNLOADED_AND_VALIDATED, "DOWNLOAD_FAILED", "VALIDATION_FAILED", "DONE_WITHOUT_AVAILABLE_FILES", "STATE_UNKNOWN")
+VERIFIED_STATUSES = (DOWNLOADED_AND_VALIDATED, "COMPLETED_VERIFIED")
 
 
 class PreflightFailed(RuntimeError):
@@ -224,7 +229,7 @@ def acquire_one(request: de.EstimateRequest, approved: list[de.EstimateRequest],
     assert_approved(request, approved)
     key = request_key(request)
     entry = ledger.entry(key)
-    if entry and entry.get("status") == "COMPLETED_VERIFIED" and raw_files_verified(entry, root):
+    if entry and entry.get("status") in VERIFIED_STATUSES and raw_files_verified(entry, root):
         return entry  # never repurchase or redownload a verified complete artifact
     if entry and not entry.get("job_id"):
         # INTENT without a job id: the submission outcome is uncertain. Reconcile, never resubmit blindly.
@@ -261,13 +266,211 @@ def acquire_one(request: de.EstimateRequest, approved: list[de.EstimateRequest],
             raise TimeoutError(f"job {job_id} still {state}; rerun the same command to resume (never resubmits)")
         sleep(poll_seconds)
         waited += poll_seconds
-    out_dir = root / RAW_ROOT / request.schema.replace("-", "_") / job_id
-    paths = batch.download(job_id=job_id, output_dir=out_dir)
-    files = []
-    for p in sorted(Path(p) for p in paths):
-        files.append({"path": str(p.relative_to(root)), "sha256": sha256_file(p), "bytes": p.stat().st_size})
-    entry.update(status="DOWNLOADED_UNVALIDATED", raw_files=files, downloaded_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
-                 final_charge_usd=entry["final_job"].get("cost_usd"), git_tracked=False,
+    ledger.put(key, entry)
+    return download_job_files(entry, batch, ledger, root)
+
+
+
+# ------------------------------------------------------------------------------- staged acquisition (Round 16B resume)
+
+
+def _now() -> str:
+    return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def job_state(batch: Any, entry: Mapping[str, Any]) -> tuple[str | None, dict[str, Any] | None]:
+    """One read-only list_jobs query for the ledger's job id (Databento may omit most fields)."""
+    jobs = [j for j in batch.list_jobs(states=JOB_STATES, since=entry["intent_utc"]) if j.get("id") == entry["job_id"]]
+    return (jobs[0].get("state"), jobs[0]) if len(jobs) == 1 else (None, None)
+
+
+def download_job_files(entry: dict[str, Any], batch: Any, ledger: Ledger, root: Path) -> dict[str, Any]:
+    """Download ONLY the files Databento lists for this existing job, one by one, each checked against the listed size and SHA-256.
+
+    Never submits anything. Raw files are written once and never modified; outcome is DOWNLOADED_UNVALIDATED,
+    DOWNLOAD_FAILED or DONE_WITHOUT_AVAILABLE_FILES.
+    """
+    key, job_id = entry["request_key"], entry["job_id"]
+    listed = batch.list_files(job_id)
+    entry["available_files"] = [{"filename": f["filename"], "size": f["size"], "hash": f["hash"]} for f in listed]
+    entry["files_listed_utc"] = _now()
+    if not listed:
+        entry["status"] = "DONE_WITHOUT_AVAILABLE_FILES"
+        ledger.put(key, entry)
+        return entry
+    out_dir = root / RAW_ROOT / entry["request"]["schema"].replace("-", "_")
+    files, problems = [], []
+    for f in sorted(listed, key=lambda f: f["filename"]):
+        target = out_dir / job_id / f["filename"]
+        algo, _, expected = str(f["hash"]).partition(":")
+        if target.exists():  # an already-present raw file is kept only if it is exactly the listed file; never overwritten
+            if not (target.is_file() and sha256_file(target) == expected and target.stat().st_size == int(f["size"])):
+                problems.append(f"REFUSING_TO_OVERWRITE_EXISTING_RAW_FILE:{f['filename']}")
+                continue
+        else:
+            try:
+                paths = batch.download(job_id=job_id, output_dir=out_dir, filename_to_download=f["filename"])
+            except Exception as exc:  # network / server error: the job is NOT resubmitted
+                problems.append(f"DOWNLOAD_ERROR:{f['filename']}:{type(exc).__name__}")
+                continue
+            if [Path(p).resolve() for p in paths] != [target.resolve()] or not target.is_file():
+                problems.append(f"UNEXPECTED_DOWNLOAD_PATHS:{f['filename']}")
+                continue
+        digest, size = sha256_file(target), target.stat().st_size
+        if algo != "sha256" or digest != expected:
+            problems.append(f"HASH_MISMATCH_WITH_DATABENTO_LISTING:{f['filename']}")
+        if size != int(f["size"]):
+            problems.append(f"SIZE_MISMATCH_WITH_DATABENTO_LISTING:{f['filename']}")
+        files.append({"path": str(target.relative_to(root)), "sha256": digest, "bytes": size, "databento_hash": f["hash"]})
+    entry.update(raw_files=files, downloaded_utc=_now(), final_charge_usd=(entry.get("final_job") or {}).get("cost_usd"),
+                 git_tracked=False, download_problems=problems,
                  storage=f"local container path {RAW_ROOT} (git-ignored, licensed data); re-downloadable from job {job_id} while Databento retains it")
+    entry["status"] = "DOWNLOAD_FAILED" if problems else "DOWNLOADED_UNVALIDATED"
     ledger.put(key, entry)
     return entry
+
+
+def validate_definitions_entry(entry: dict[str, Any], request: de.EstimateRequest, ledger: Ledger, root: Path) -> dict[str, Any]:
+    """Hash-verify, decode and validate the definitions DBN against the approved request -> DOWNLOADED_AND_VALIDATED / VALIDATION_FAILED."""
+    from mnq_research import raw_ingest as ri
+
+    if request.schema != "definition" or entry.get("status") != "DOWNLOADED_UNVALIDATED":
+        raise ValueError("only downloaded, unvalidated definitions can be validated here")
+    dbn = [f for f in entry["raw_files"] if f["path"].endswith((".dbn.zst", ".dbn"))]
+    issues: list[dict[str, Any]] = []
+    summary: dict[str, Any] = {}
+    if len(dbn) != 1:
+        issues.append({"code": "EXPECTED_ONE_DBN_FILE", "count": len(dbn), "blocking": True})
+    else:
+        try:
+            meta, df = ri.load_dbn(root / dbn[0]["path"], dbn[0]["sha256"])
+        except Exception as exc:  # corrupt / truncated / altered
+            issues.append({"code": "DECODE_OR_HASH_FAILURE", "count": 1, "blocking": True, "examples": [f"{type(exc).__name__}: {exc}"]})
+        else:
+            v = ri.check_metadata(meta, request.dataset, request.schema, request.symbols, request.start_utc, request.end_utc)
+            dv, ids = ri.validate_definitions(df.reset_index(), request.symbols)
+            rtypes = sorted({int(r) for r in df["rtype"].unique()}) if "rtype" in df else []
+            v.add("UNEXPECTED_RECORD_TYPE", int(rtypes != [19]), True, rtypes)  # 19 = InstrumentDefMsg
+            issues = [i.__dict__ for i in v.issues + dv.issues]
+            summary = {"records_decoded": int(len(df)), "metadata": {"dataset": str(meta.dataset), "schema": str(getattr(meta.schema, "value", meta.schema)),
+                       "stype_in": str(getattr(meta.stype_in, "value", meta.stype_in)), "start_ns": int(meta.start), "end_ns": int(meta.end),
+                       "symbol_count": len(meta.symbols), "not_found": list(getattr(meta, "not_found", []) or [])},
+                       "record_types": rtypes, "instrument_ids": ids,
+                       "records_per_symbol": {s: int(n) for s, n in df.reset_index()["raw_symbol"].astype(str).value_counts().sort_index().items()}}
+    blocking = [i for i in issues if i.get("blocking") and i.get("count")]
+    entry.update(definitions_validation={"validated_utc": _now(), "passed": not blocking, "issues": issues, **summary},
+                 status="VALIDATION_FAILED" if blocking else DOWNLOADED_AND_VALIDATED)
+    ledger.put(entry["request_key"], entry)
+    return entry
+
+
+def ohlcv_submission_problems(ledger: Ledger, approved: list[de.EstimateRequest], batch: Any, root: Path) -> list[str]:
+    """Fail-closed gate before the single OHLCV-1m submission."""
+    definition, ohlcv = approved
+    problems = []
+    d = ledger.entry(request_key(definition)) or {}
+    if d.get("status") not in VERIFIED_STATUSES or not raw_files_verified(d, root):
+        problems.append(f"DEFINITIONS_NOT_DOWNLOADED_AND_VALIDATED:{d.get('status')}")
+    if ledger.entry(request_key(ohlcv)) is not None:
+        problems.append("OHLCV_LEDGER_ENTRY_ALREADY_EXISTS")
+    known = {e.get("job_id") for e in ledger.data["entries"].values()}
+    since = min((e["intent_utc"] for e in ledger.data["entries"].values()), default="2026-09-30T00:00:00Z")
+    unknown = [j.get("id") for j in batch.list_jobs(states=JOB_STATES, since=since) if j.get("id") not in known]
+    if unknown:  # list_jobs may omit schema fields, so ANY unrecorded job blocks (it could be an OHLCV job)
+        problems.append(f"UNRECORDED_DATABENTO_JOBS_EXIST:{unknown}")
+    return problems
+
+
+def submit_once(request: de.EstimateRequest, approved: list[de.EstimateRequest], batch: Any, ledger: Ledger, client_version: str,
+                preflight_cost_usd: str, approval_payload_sha256: str) -> dict[str, Any]:
+    """Write the INTENT, submit exactly once, persist the job id. Refuses if ANY ledger entry exists for the request."""
+    assert_approved(request, approved)
+    key = request_key(request)
+    if ledger.entry(key) is not None:
+        raise PreflightFailed(f"PURCHASE_PREFLIGHT_FAILED: ledger already has an entry for {request.schema}; never resubmitted")
+    entry = {"request_key": key, "request": asdict(request), "submit_format": SUBMIT_FORMAT, "client_version": client_version,
+             "cost_quoted_before_submission_usd": preflight_cost_usd, "approval_payload_sha256": approval_payload_sha256,
+             "status": "INTENT_RECORDED", "intent_utc": _now()}
+    ledger.put(key, entry)  # durable BEFORE the paid call
+    job = batch.submit_job(dataset=request.dataset, symbols=list(request.symbols), schema=request.schema,
+                           start=request.start_utc, end=request.end_utc, stype_in=request.stype_in, **SUBMIT_FORMAT)
+    entry.update(job_id=job["id"], status="SUBMITTED", submitted_job=job, databento_ts_received=job.get("ts_received"))
+    ledger.put(key, entry)
+    return entry
+
+
+def poll_until_done(entry: dict[str, Any], batch: Any, ledger: Ledger, timeout_seconds: float, poll_seconds: float = 30.0,
+                    sleep: Callable[[float], None] = time.sleep) -> str | None:
+    """Bounded read-only polling. Returns the last state; never cancels or resubmits. Records only the status and check time."""
+    waited = 0.0
+    while True:
+        state, job = job_state(batch, entry)
+        entry["last_status_check"] = {"checked_at_utc": _now(), "databento_state": state, "fields_returned_by_list_jobs": job}
+        if state == "done":
+            entry["final_job"] = job
+        ledger.put(entry["request_key"], entry)
+        if state in ("done", "expired") or waited >= timeout_seconds:
+            return state
+        sleep(poll_seconds)
+        waited += poll_seconds
+
+
+def _advance_existing(entry: dict[str, Any], request: de.EstimateRequest, batch: Any, ledger: Ledger, root: Path,
+                      poll_timeout: float, poll_seconds: float, sleep: Callable[[float], None]) -> None:
+    """Move an already-submitted job forward without ever submitting: poll (bounded), download its own files, validate definitions."""
+    if not entry.get("job_id"):
+        raise ReconciliationRequired(f"{request.schema}: intent without a job id; reconcile with Databento before anything else")
+    if entry["status"] == "SUBMITTED":
+        state = poll_until_done(entry, batch, ledger, poll_timeout, poll_seconds, sleep)
+        if state is None or state == "expired":
+            entry.update(status="STATE_UNKNOWN", last_state=state)
+            ledger.put(entry["request_key"], entry)
+            return
+        if state != "done":
+            return  # still pending: job id and ledger preserved, nothing cancelled or resubmitted
+    if entry["status"] in ("SUBMITTED", "DOWNLOAD_FAILED") or (entry["status"] in VERIFIED_STATUSES and not raw_files_verified(entry, root)):
+        download_job_files(entry, batch, ledger, root)
+    if request.schema == "definition" and entry["status"] == "DOWNLOADED_UNVALIDATED":
+        validate_definitions_entry(entry, request, ledger, root)
+
+
+def run_staged(spec: Mapping[str, Any], root: Path, batch: Any, metadata_client: de.MetadataOnlyClient, client_version: str,
+               secret: str | None, ledger: Ledger, poll_timeout: float = 600.0, poll_seconds: float = 30.0,
+               sleep: Callable[[float], None] = time.sleep) -> dict[str, Any]:
+    """Definitions first; the single OHLCV-1m submission only after DOWNLOADED_AND_VALIDATED definitions and a passing preflight.
+
+    Returns immediately after ANY submission (outcome *_SUBMITTED_CHECKPOINT) so the job id is committed before polling.
+    """
+    approval, requests = approved_requests(spec, root)
+    definition, ohlcv = requests
+    result: dict[str, Any] = {"preflight": None}
+
+    def checked_preflight() -> PreflightReport:
+        report, _, _ = preflight(spec, root, metadata_client, client_version, secret, ledger)
+        result["preflight"] = report
+        return report
+
+    d = ledger.entry(request_key(definition))
+    if d is None:
+        report = checked_preflight()
+        if not report.passed:
+            return {**result, "outcome": "PURCHASE_PREFLIGHT_FAILED"}
+        submit_once(definition, requests, batch, ledger, client_version, report.fresh_costs_usd["definition"], approval.estimate_payload_sha256)
+        return {**result, "outcome": "DEFINITIONS_SUBMITTED_CHECKPOINT"}
+    if not (d["status"] in VERIFIED_STATUSES and raw_files_verified(d, root)):
+        _advance_existing(d, definition, batch, ledger, root, poll_timeout, poll_seconds, sleep)
+    if d["status"] not in VERIFIED_STATUSES:
+        return {**result, "outcome": f"DEFINITIONS_{d['status']}"}
+    o = ledger.entry(request_key(ohlcv))
+    if o is None:
+        report = checked_preflight()
+        if not report.passed:
+            return {**result, "outcome": "PURCHASE_PREFLIGHT_FAILED"}
+        problems = ohlcv_submission_problems(ledger, requests, batch, root)
+        if problems:
+            return {**result, "outcome": "OHLCV_SUBMISSION_BLOCKED", "problems": problems}
+        submit_once(ohlcv, requests, batch, ledger, client_version, report.fresh_costs_usd["ohlcv-1m"], approval.estimate_payload_sha256)
+        return {**result, "outcome": "OHLCV_SUBMITTED_CHECKPOINT"}
+    if not (o["status"] in VERIFIED_STATUSES and raw_files_verified(o, root)):
+        _advance_existing(o, ohlcv, batch, ledger, root, poll_timeout, poll_seconds, sleep)
+    return {**result, "outcome": f"OHLCV_{o['status']}"}

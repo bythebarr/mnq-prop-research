@@ -134,23 +134,32 @@ def cmd_data_acquire(args: argparse.Namespace, root: Path) -> int:
     import databento
 
     client = databento.Historical(key)
-    report, approval, requests = da.preflight(spec, root, de.MetadataOnlyClient(client), databento.__version__, key, ledger)
-    out = root / "outputs" / "acquisition"
-    out.mkdir(parents=True, exist_ok=True)
-    stamp = report.checked_utc.replace(":", "").replace("-", "")[:15]
-    (out / f"preflight_{stamp}.json").write_text(json.dumps(de.asdict(report), indent=2, sort_keys=True, default=str) + "\n")
-    print(json.dumps({"preflight_passed": report.passed, "problems": report.problems, "fresh_costs_usd": report.fresh_costs_usd,
-                      "fresh_combined_usd": report.fresh_combined_usd, "checked_utc": report.checked_utc}, indent=2))
-    if not report.passed:
-        print("PURCHASE_PREFLIGHT_FAILED: nothing was submitted")
-        return FOUND_PROBLEMS
     if args.preflight_only:
-        return OK
-    for request in requests:
-        entry = da.acquire_one(request, requests, client.batch, ledger, root, databento.__version__,
-                               report.fresh_costs_usd[request.schema], timeout_seconds=args.timeout)
-        print(json.dumps({k: entry.get(k) for k in ("status", "job_id", "final_charge_usd", "raw_files")}, indent=2, default=str))
-    return OK
+        report, _, _ = da.preflight(spec, root, de.MetadataOnlyClient(client), databento.__version__, key, ledger)
+        result = {"preflight": report, "outcome": "PREFLIGHT_ONLY"}
+    else:
+        try:
+            result = da.run_staged(spec, root, client.batch, de.MetadataOnlyClient(client), databento.__version__, key, ledger,
+                                   poll_timeout=args.timeout, poll_seconds=args.poll_seconds)
+        except (da.PreflightFailed, da.ReconciliationRequired) as exc:
+            print(de.redact(str(exc), key))
+            return FOUND_PROBLEMS
+    report = result.get("preflight")
+    if report is not None:
+        out = root / "outputs" / "acquisition"
+        out.mkdir(parents=True, exist_ok=True)
+        stamp = report.checked_utc.replace(":", "").replace("-", "")[:15]
+        (out / f"preflight_{stamp}.json").write_text(json.dumps(de.asdict(report), indent=2, sort_keys=True, default=str) + "\n")
+        print(json.dumps({"preflight_passed": report.passed, "problems": report.problems, "fresh_costs_usd": report.fresh_costs_usd,
+                          "fresh_combined_usd": report.fresh_combined_usd, "checked_utc": report.checked_utc}, indent=2))
+    summary = {s: {k: e.get(k) for k in ("status", "job_id", "databento_ts_received", "final_charge_usd", "raw_files", "last_status_check")}
+               for s, e in ((e["request"]["schema"], e) for e in ledger.data["entries"].values())}
+    print(json.dumps({"outcome": result["outcome"], "problems": result.get("problems", []), "ledger": summary}, indent=2, default=str))
+    if result["outcome"].endswith("_SUBMITTED_CHECKPOINT"):
+        print("CHECKPOINT: commit and push the ledger now, then rerun the same command to poll (it never resubmits).")
+    return OK if result["outcome"] in ("PREFLIGHT_ONLY", "OHLCV_SUBMITTED_CHECKPOINT", "DEFINITIONS_SUBMITTED_CHECKPOINT",
+                                       "OHLCV_SUBMITTED", "OHLCV_DOWNLOADED_UNVALIDATED", "OHLCV_COMPLETED_VERIFIED") and \
+        (report is None or report.passed) else FOUND_PROBLEMS
 
 
 def cmd_data_ingest(args: argparse.Namespace, root: Path) -> int:
@@ -370,7 +379,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = data.add_parser("acquire", help="APPROVED purchase only: preflight + idempotent Databento batch jobs")
     p.add_argument("--spec", default=str(DEFAULT_RULE_FREEZE_PATH))
     p.add_argument("--preflight-only", action="store_true")
-    p.add_argument("--timeout", type=float, default=480.0, help="seconds to wait for job completion (rerun resumes)")
+    p.add_argument("--timeout", type=float, default=480.0, help="bounded read-only polling window in seconds (rerun resumes)")
+    p.add_argument("--poll-seconds", type=float, default=30.0, help="seconds between read-only status queries")
     p.set_defaults(func=cmd_data_acquire)
     p = data.add_parser("ingest", help="validate approved raw DBN files and derive the canonical dataset")
     p.add_argument("--spec", default=str(DEFAULT_RULE_FREEZE_PATH))

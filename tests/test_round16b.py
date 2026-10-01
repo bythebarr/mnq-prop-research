@@ -60,12 +60,24 @@ class FakeBatch:
     def list_jobs(self, states=None, since=None):
         return list(self.jobs)
 
-    def download(self, job_id, output_dir):
+    FILES = ("glbx-mdp3.dbn.zst",)
+
+    @staticmethod
+    def content(job_id, name):
+        return f"raw-{job_id}-{name}".encode()
+
+    def list_files(self, job_id):
+        import hashlib
+        return [{"filename": n, "size": len(self.content(job_id, n)), "hash": "sha256:" + hashlib.sha256(self.content(job_id, n)).hexdigest()}
+                for n in self.FILES]
+
+    def download(self, job_id, output_dir, filename_to_download=None):
+        assert filename_to_download in self.FILES  # one listed file at a time, never the whole-job zip
         self.downloads.append(job_id)
-        out = Path(output_dir)
+        out = Path(output_dir) / job_id
         out.mkdir(parents=True, exist_ok=True)
-        f = out / "glbx-mdp3.dbn.zst"
-        f.write_bytes(f"raw-{job_id}".encode())
+        f = out / filename_to_download
+        f.write_bytes(self.content(job_id, filename_to_download))
         return [f]
 
 
@@ -334,3 +346,162 @@ def test_definitions_must_match_the_frozen_instrument_facts():
                       (defs(symbols=CONTRACTS[:-1] + ("NQZ6",)), "UNRELATED_INSTRUMENT")):
         v, _ = ri.validate_definitions(bad, CONTRACTS)
         assert code in codes(v) and not v.passed
+
+
+# =========================================================================== staged resume (definitions first, one OHLCV submission)
+
+
+def _fake_definitions(monkeypatch, requests, *, tick=250_000_000, extra_symbol=None, rtype=19):
+    import pandas as pd
+
+    from mnq_research import raw_ingest as ri
+
+    d = requests[0]
+    syms = list(d.symbols) + ([extra_symbol] if extra_symbol else [])
+
+    class Meta:
+        dataset, schema, stype_in = d.dataset, d.schema, d.stype_in
+        symbols = list(d.symbols)
+        start, end = pd.Timestamp(d.start_utc).value, pd.Timestamp(d.end_utc).value
+        not_found: list[str] = []
+
+    df = pd.DataFrame({"raw_symbol": syms, "instrument_id": range(1, len(syms) + 1), "min_price_increment": tick,
+                       "currency": "USD", "unit_of_measure_qty": 2_000_000_000, "rtype": rtype})
+
+    def load(path, sha):
+        ri.verify_raw(path, sha)
+        return Meta(), df
+
+    monkeypatch.setattr(ri, "load_dbn", load)
+
+
+def submitted_definitions(root, requests, batch):
+    ledger = da.Ledger(root / da.LEDGER_PATH)
+    entry = da.submit_once(requests[0], requests, batch, ledger, "0.87.0", "0.0094", "a" * 64)
+    return ledger, entry
+
+
+def staged(spec, root, batch, ledger, **kw):
+    return da.run_staged(spec, root, batch, metadata([]), "0.87.0", FAKE_KEY, ledger, poll_seconds=0, sleep=lambda s: None, **kw)
+
+
+def test_definitions_are_downloaded_validated_then_one_ohlcv_job_is_submitted_and_the_run_stops(tmp_path, monkeypatch):
+    spec, root = workspace(tmp_path)
+    _, _, requests = run_preflight(spec, root)
+    batch = FakeBatch(root)
+    ledger, _ = submitted_definitions(root, requests, batch)
+    _fake_definitions(monkeypatch, requests)
+    result = staged(spec, root, batch, ledger)
+    d = ledger.entry(da.request_key(requests[0]))
+    assert d["status"] == da.DOWNLOADED_AND_VALIDATED and d["definitions_validation"]["passed"]
+    assert d["available_files"] and d["raw_files"][0]["sha256"] == d["available_files"][0]["hash"].split(":")[1]
+    assert result["outcome"] == "OHLCV_SUBMITTED_CHECKPOINT" and len(batch.submits) == 2
+    assert [s["schema"] for s in batch.submits] == ["definition", "ohlcv-1m"]
+    o = ledger.entry(da.request_key(requests[1]))
+    assert o["status"] == "SUBMITTED" and o["approval_payload_sha256"] == spec["data_acquisition"]["purchase_approval"]["estimate_artifact_sha256"]
+    assert batch.downloads == ["GLBX-JOB-1"]  # the checkpoint run never polled or downloaded the OHLCV job
+    again = staged(spec, root, batch, da.Ledger(root / da.LEDGER_PATH))  # rerun polls/downloads, never resubmits
+    assert len(batch.submits) == 2 and again["outcome"] == "OHLCV_DOWNLOADED_UNVALIDATED"
+
+
+def test_ohlcv_is_never_submitted_unless_definitions_are_downloaded_and_validated(tmp_path, monkeypatch):
+    spec, root = workspace(tmp_path)
+    _, _, requests = run_preflight(spec, root)
+    for i, bad in enumerate(({"tick": 500_000_000}, {"extra_symbol": "MNQZ7"}, {"rtype": 20})):
+        sub = workspace(tmp_path / f"case{i}")[1]
+        batch = FakeBatch(sub)
+        ledger, _ = submitted_definitions(sub, requests, batch)
+        _fake_definitions(monkeypatch, requests, **bad)
+        result = staged(spec, sub, batch, ledger)
+        assert result["outcome"] == "DEFINITIONS_VALIDATION_FAILED", bad
+        assert [s["schema"] for s in batch.submits] == ["definition"]
+
+
+def test_done_without_files_and_hash_mismatch_never_submit_anything(tmp_path, monkeypatch):
+    spec, root = workspace(tmp_path)
+    _, _, requests = run_preflight(spec, root)
+    empty = FakeBatch(root)
+    empty.list_files = lambda job_id: []
+    ledger, _ = submitted_definitions(root, requests, empty)
+    assert staged(spec, root, empty, ledger)["outcome"] == "DEFINITIONS_DONE_WITHOUT_AVAILABLE_FILES"
+    assert len(empty.submits) == 1 and empty.downloads == []
+
+    root2 = workspace(tmp_path / "b")[1]
+    corrupt = FakeBatch(root2)
+    real = corrupt.list_files
+    corrupt.list_files = lambda job_id: [{**f, "hash": "sha256:" + "0" * 64} for f in real(job_id)]
+    ledger2, _ = submitted_definitions(root2, requests, corrupt)
+    assert staged(spec, root2, corrupt, ledger2)["outcome"] == "DEFINITIONS_DOWNLOAD_FAILED"
+    assert len(corrupt.submits) == 1
+
+
+def test_pending_jobs_are_polled_within_a_bound_and_never_cancelled_or_resubmitted(tmp_path, monkeypatch):
+    spec, root = workspace(tmp_path)
+    _, _, requests = run_preflight(spec, root)
+    batch = FakeBatch(root)
+    ledger, entry = submitted_definitions(root, requests, batch)
+    batch.jobs[0] = {"id": entry["job_id"], "state": "processing", "ts_received": "x"}  # Databento's sparse list_jobs fields
+    sleeps = []
+    result = da.run_staged(spec, root, batch, metadata([]), "0.87.0", FAKE_KEY, ledger, poll_timeout=90, poll_seconds=30, sleep=sleeps.append)
+    assert result["outcome"] == "DEFINITIONS_SUBMITTED" and sleeps == [30, 30, 30]
+    e = ledger.entry(da.request_key(requests[0]))
+    assert e["job_id"] == entry["job_id"] and e["last_status_check"]["databento_state"] == "processing"
+    assert len(batch.submits) == 1 and batch.downloads == [] and not hasattr(batch, "cancels")
+    batch.jobs[0] = {"id": entry["job_id"], "state": "expired"}
+    assert staged(spec, root, batch, ledger)["outcome"] == "DEFINITIONS_STATE_UNKNOWN" and len(batch.submits) == 1
+
+
+def test_ohlcv_gate_blocks_unrecorded_jobs_existing_entries_and_over_cap_quotes(tmp_path, monkeypatch):
+    spec, root = workspace(tmp_path)
+    _, _, requests = run_preflight(spec, root)
+    batch = FakeBatch(root)
+    ledger, _ = submitted_definitions(root, requests, batch)
+    _fake_definitions(monkeypatch, requests)
+    batch.jobs.append({"id": "GLBX-UNKNOWN", "state": "queued"})  # could be an OHLCV job submitted elsewhere
+    result = staged(spec, root, batch, ledger)
+    assert result["outcome"] == "OHLCV_SUBMISSION_BLOCKED" and "UNRECORDED_DATABENTO_JOBS_EXIST" in result["problems"][0]
+    assert len(batch.submits) == 1
+    batch.jobs.pop()
+    over = da.run_staged(spec, root, batch, metadata([], cost_b=19.995), "0.87.0", FAKE_KEY, ledger, poll_seconds=0, sleep=lambda s: None)
+    assert over["outcome"] == "PURCHASE_PREFLIGHT_FAILED" and len(batch.submits) == 1
+    with pytest.raises(da.PreflightFailed):  # a second submission of any request is refused outright
+        da.submit_once(requests[0], requests, batch, ledger, "0.87.0", "0", "a" * 64)
+    assert len(batch.submits) == 1
+
+
+def test_an_existing_raw_file_is_never_overwritten(tmp_path):
+    spec, root = workspace(tmp_path)
+    _, _, requests = run_preflight(spec, root)
+    batch = FakeBatch(root)
+    ledger, entry = submitted_definitions(root, requests, batch)
+    target = root / da.RAW_ROOT / "definition" / entry["job_id"] / FakeBatch.FILES[0]
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"something else")
+    entry = da.download_job_files(ledger.entry(entry["request_key"]), batch, ledger, root)
+    assert entry["status"] == "DOWNLOAD_FAILED" and target.read_bytes() == b"something else" and batch.downloads == []
+    assert entry["download_problems"] == [f"REFUSING_TO_OVERWRITE_EXISTING_RAW_FILE:{FakeBatch.FILES[0]}"]
+
+
+def test_the_ohlcv_gate_itself_requires_validated_definitions_with_intact_files(tmp_path, monkeypatch):
+    spec, root = workspace(tmp_path)
+    _, _, requests = run_preflight(spec, root)
+    batch = FakeBatch(root)
+    ledger, entry = submitted_definitions(root, requests, batch)
+    assert any(p.startswith("DEFINITIONS_NOT_DOWNLOADED_AND_VALIDATED") for p in da.ohlcv_submission_problems(ledger, requests, batch, root))
+    _fake_definitions(monkeypatch, requests)
+    staged(spec, root, batch, ledger)
+    ledger.data["entries"].pop(da.request_key(requests[1]))  # pretend the OHLCV job had not been submitted
+    batch.jobs = batch.jobs[:1]
+    assert da.ohlcv_submission_problems(ledger, requests, batch, root) == []
+    (root / ledger.entry(entry["request_key"])["raw_files"][0]["path"]).write_bytes(b"altered")
+    assert any(p.startswith("DEFINITIONS_NOT_DOWNLOADED_AND_VALIDATED") for p in da.ohlcv_submission_problems(ledger, requests, batch, root))
+
+
+def test_an_existing_raw_file_identical_to_the_listing_is_kept_without_redownloading(tmp_path):
+    spec, root = workspace(tmp_path)
+    _, _, requests = run_preflight(spec, root)
+    batch = FakeBatch(root)
+    ledger, entry = submitted_definitions(root, requests, batch)
+    entry = da.download_job_files(ledger.entry(entry["request_key"]), batch, ledger, root)
+    entry = da.download_job_files(entry, batch, ledger, root)  # e.g. a rerun after an interrupted ledger write
+    assert entry["status"] == "DOWNLOADED_UNVALIDATED" and batch.downloads == [entry["job_id"]]
