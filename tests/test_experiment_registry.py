@@ -1,4 +1,6 @@
-"""Experiment registry: blocked while the rule freeze is incomplete; immutable once registered."""
+"""Experiment registry: the freeze gate blocks registration until the rules
+are executable; a plan also cannot register while its own fields are
+undecided; immutable once registered."""
 
 from __future__ import annotations
 
@@ -35,12 +37,25 @@ def _plan(**overrides) -> dict:
     return plan
 
 
-def test_experiment_001_is_blocked_by_rule_freeze(tmp_path):
+def test_experiment_001_is_blocked_by_its_undecided_plan_not_the_freeze(tmp_path):
     record = load_experiment(EXPERIMENT_PATH)
+    # The plan file still carries its pre-freeze status label...
     assert record.status.value == "NOT_RUN_BLOCKED_BY_RULE_FREEZE"
     assessment = assess_experiment(record, PROJECT_ROOT)
     assert not assessment.can_register
-    assert any("rule freeze is NOT executable" in b for b in assessment.blockers)
+    # ...but the freeze itself no longer blocks anything: it was approved on
+    # 2026-11-03 and is executable. What still blocks EXP-001 is the plan's
+    # own undecided fields (data, splits, costs are null in the plan file).
+    assert not any("rule freeze" in b for b in assessment.blockers)
+    undecided = {
+        "training_period",
+        "validation_period",
+        "holdout_period",
+        "data_identifier",
+        "data_hash",
+        "cost_assumptions",
+    }
+    assert {b.split(" ", 1)[0] for b in assessment.blockers} == undecided
 
     registry = tmp_path / "registry.jsonl"
     with pytest.raises(ExperimentBlockedError):

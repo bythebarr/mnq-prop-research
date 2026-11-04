@@ -36,15 +36,26 @@ def test_all_unresolved_fields_are_reported_together(draft_spec):
     assert {"STATUS", "UNRESOLVED", "APPROVAL"} <= kinds
 
 
-def test_draft_template_contains_every_required_field(draft_spec):
-    missing = [p for p in REQUIRED_FIELDS if get_path(draft_spec, p) is get_path({}, "x")]
+def test_rule_freeze_contains_every_required_field(live_spec):
+    missing = [p for p in REQUIRED_FIELDS if get_path(live_spec, p) is get_path({}, "x")]
     assert missing == []
 
 
-def test_deleting_a_field_does_not_make_it_pass(draft_spec):
-    del draft_spec["stop_placement"]["method"]
-    report = check_rule_freeze(draft_spec)
+def test_deleting_a_field_does_not_make_it_pass(live_spec):
+    del live_spec["stop_placement"]["method"]
+    report = check_rule_freeze(live_spec)
     assert ("stop_placement.method", "MISSING") in {(p.path, p.kind) for p in report.problems}
+
+
+def test_live_rule_freeze_is_frozen_and_executable(live_spec):
+    # The shipped spec itself: frozen, approved, hash-locked, executable.
+    # (The other tests prove the gate blocks drafts and fixture-completed
+    # specs pass; this one guards the real file's current state.)
+    assert live_spec["specification"]["status"] == "FROZEN_APPROVED"
+    assert live_spec["approval_record"]["approved"] is True
+    assert live_spec["approval_record"]["approved_spec_hash"]
+    report = require_executable(live_spec)
+    assert report.is_executable
 
 
 def test_completed_and_approved_spec_is_executable(completed_spec):
