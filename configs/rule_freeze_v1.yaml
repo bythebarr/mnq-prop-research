@@ -1,5 +1,15 @@
 # =============================================================================
-#  RULE FREEZE v1  --  STATUS: DRAFT_NON_EXECUTABLE
+#  TRANSFER-PREP COPY - NOT THE REPO FILE. Built 2026-11-03 from the repo
+#  template (main @ c832229) with every banked answer from the rule-freeze
+#  answers sheet filled in. Fields with no banked answer keep their TBD and
+#  carry an UNRESOLVED comment. specification.status is deliberately left
+#  FROZEN_APPROVED and approval_record untouched: both are completed
+#  in the transfer session, in that order, per guide section 18.
+#  (See transfer-session-checklist.md in the same folder.)
+# =============================================================================
+
+# =============================================================================
+#  RULE FREEZE v1  --  STATUS: FROZEN_APPROVED
 # =============================================================================
 #  THIS FILE IS A BLANK TEMPLATE. IT CONTAINS NO ACCEPTED TRADING RULES.
 #
@@ -19,38 +29,50 @@
 
 specification:
   spec_id: MNQ-RULE-FREEZE
-  version: "1.0-draft"
-  status: DRAFT_NON_EXECUTABLE   # allowed: DRAFT_NON_EXECUTABLE | FROZEN_APPROVED
-  strategy_name: TBD
-  author: TBD
-  plain_english_summary: TBD
+  # NOTE for the transfer session: left as shipped ("1.0" passes validation - it is not TBD). Guide section 1 says the first approved complete version starts at "1.0"; changing it is a session decision, and any change must happen BEFORE the approval hash is copied (see checklist).
+  version: "1.0"
+  status: FROZEN_APPROVED   # allowed: FROZEN_APPROVED | FROZEN_APPROVED
+  strategy_name: Archr Elite
+  # Author of record and accountable for the rules (confirmed Nov 3). AI assistance is research/formalization support only, not the strategy author.
+  author: Sam Barr
+  plain_english_summary: The strategy waits for MNQ to interact with an objective structural zone - prior-day high, low or close; overnight high or low; or opening-range high or low - then requires price to become accepted beyond that zone, pull back and hold it, and produce a completed five-minute continuation confirmation; it trades long after confirmed acceptance above a zone and short after confirmed acceptance below, provided there is at least 1.5R of unobstructed room to the next zone. It enters once with a market order submitted one second after the confirmed decision bar closes, places the structural stop one tick beyond the opposite side of the originating zone, and targets one tick before the nearest meaningful zone ahead; if neither exit occurs, it closes at 12:00 New York time, with news, structural invalidation, data or safety failures able to force an earlier exit. New entries are allowed only from 09:45 until before 11:30 New York time, and the strategy stops entering for the day after any positive fill, an opposing-direction conflict, an unknown execution state or another safety halt.
 
 # --- Instrument and contract selection ---------------------------------------
 instrument:
   root_symbol: MNQ               # stated in the project brief
-  exchange: TBD
-  tick_size_points: TBD
-  tick_value_usd: TBD
-  point_value_usd: TBD
-  contract_selection_method: TBD
+  # Execution venue is CME Globex (confirmed Nov 3).
+  exchange: CME
+  tick_size_points: 0.25
+  tick_value_usd: 0.50
+  point_value_usd: 2.00
+  contract_selection_method: >
+    Volume-based quarterly roll: trade the current quarterly MNQ contract until the next quarterly contract records greater completed daily volume than the current contract; switch at the following 18:00 America/New_York Globex session open, using only completed prior-day volume. The transition trading date is excluded. NOT simply 'front month'.
 
 # --- Contract-roll method ------------------------------------------------------
 contract_roll:
-  roll_trigger: TBD
-  roll_timing: TBD
-  price_series_adjustment: TBD
-  open_position_at_roll: TBD
+  roll_trigger: The next quarterly MNQ contract records greater completed daily volume than the current contract (completed prior-day volume only).
+  roll_timing: At the following 18:00 America/New_York Globex session open after the trigger; the transition trading date is excluded (no trading that date).
+  # UNRESOLVED: no banked answer exists - Sam never answered whether historical prices are unadjusted per-contract or a back-adjusted continuous series. The transfer session must resolve this before approval.
+  price_series_adjustment: UNADJUSTED  # Gap batch Q1 (Sam, Nov 3): every bar keeps its own contract's real traded price; no adjustment/stitching; new contract's bars establish all new levels; roll-transition date excluded (frozen roll rule); roll gaps visible in audit data, never read as within-contract movement.
+  open_position_at_roll: NOT_APPLICABLE - the strategy is always flat beforehand (positions flatten by 12:00 New York daily), so no open position can exist at a roll.
 
 # --- Source data and required fields ------------------------------------------
 source_data:
-  vendor: TBD
-  dataset_name: TBD
+  # Gap batch Q2 (Sam, Nov 3): Databento is the historical market-data vendor of record for B0. Acquisition detail frozen with it: dataset GLBX.MDP3, schema ohlcv-1m, symbol_type raw_symbol, individual MNQ quarterly contracts (price series UNADJUSTED, Gap Q1). Quantower/Rithmic are future execution infrastructure, not the backtest vendor. The validated acquisition artifacts and canonical dataset remain the controlling data-version references.
+  vendor: Databento
+  # Gap batch Q3 (Sam, Nov 3): the Databento dataset of record.
+  dataset_name: GLBX.MDP3
   base_bar_interval: 1min        # fixed by docs/DATA_CONTRACT.md
-  vendor_timestamp_convention: TBD
-  vendor_timezone: TBD
-  history_start_date: TBD
-  history_end_date: TBD
-  higher_resolution_data_available: TBD
+  # UNRESOLVED: no banked answer exists.
+  vendor_timestamp_convention: START_OF_BAR_UTC  # Gap batch Q4 (Sam, Nov 3): Databento ohlcv-1m ts_event is the inclusive start of the 1-minute interval [ts, ts+1min); usable only at bar_end = ts_event + 1 minute, never at the stamped time; no record is printed for a no-trade interval (cf. Batch 7: verified no-trade minute is not a gap); no timestamp shifting on the stored vendor record.
+  # UNRESOLVED: no banked answer exists.
+  vendor_timezone: UTC  # Gap batch Q5 (Sam, Nov 3): vendor timestamps stored and interpreted in UTC; conversion to America/New_York only for session windows, news blackouts, trading dates and DST-aware rule times; the original vendor timestamp remains unchanged.
+  # UNRESOLVED: no banked answer exists - history depth was never specified in any batch.
+  history_start_date: 2019-05-06  # Gap batch Q6 (Sam, Nov 3): MNQ's first trading date — the full available instrument history, not a selected regime. OHLCV request start: 2019-05-05T22:00:00Z (the preceding Sunday 18:00 NY Globex open); contract-definition request may begin earlier that UTC day as already captured. All train/validation/holdout boundaries are carved from this fixed history afterward; the start date cannot be moved based on results.
+  # UNRESOLVED: no banked answer exists.
+  history_end_date: 2026-09-25  # Gap batch Q7 (Sam, Nov 3): FIXED date, request_end_exclusive 2026-09-26T00:00:00Z — matches the already acquired, validated and hashed Databento dataset. Frozen B0 history = trading dates 2019-05-06 through 2026-09-25 inclusive. NOT a rolling latest-available rule; later data becomes a separately versioned forward/out-of-sample extension and cannot silently enter the frozen historical test.
+  # UNRESOLVED: no banked answer exists. Batch 6 froze the POLICY for using finer data when it exists (resolution_with_finer_data), but availability itself was explicitly left to a later section and never answered.
+  higher_resolution_data_available: false  # Gap batch Q8 (Sam, Nov 3): status NOT_PRESENT_IN_FROZEN_DATASET — the frozen acquisition holds contract definitions + ohlcv-1m only; no trades or 1-second bars were purchased, downloaded, validated or hashed for any portion of the window. Databento's ability to sell finer data does not make it available to this experiment; the conservative one-minute ambiguity rules (Batch 6) govern the entire initial B0 run. Any later candidate-specific finer-data purchase becomes a separately approved, versioned resolution dataset and cannot silently alter the frozen baseline.
   required_fields:               # fixed by docs/DATA_CONTRACT.md
     - timestamp_utc
     - timestamp_exchange
@@ -69,68 +91,141 @@ source_data:
 timezone_policy:
   storage_timezone: UTC                 # fixed by docs/DATA_CONTRACT.md
   exchange_timezone: America/Chicago    # CME local time; fixed by docs/DATA_CONTRACT.md
-  rule_timezone: TBD
-  dst_handling: TBD
+  rule_timezone: America/New_York
+  dst_handling: Rules follow New York local wall-clock time all year, automatically following daylight-saving changes; 09:45 means 09:45 in New York in both EST and EDT; UTC conversions vary by season.
 
 # --- Session definitions -----------------------------------------------------------
 sessions:
-  trading_window_start: TBD
-  trading_window_end: TBD
-  reference_windows: TBD
-  early_close_handling: TBD
+  # America/New_York. A completed five-minute decision bar closing exactly at 09:45 may produce the first eligible entry candidate (order submitted 09:45:01). Window start is inclusive.
+  trading_window_start: "09:45:00"
+  # America/New_York. Exclusive: no entry order may be submitted or filled at or after 11:30; any unfilled entry order is cancelled at 11:30. Separate from the 12:00 flatten of an already-open position.
+  trading_window_end: "11:30:00"
+  reference_windows: >
+    All times America/New_York. Prior regular session: previous eligible trading day, 09:30:00 inclusive to 16:00:00 exclusive - prior-day high, low and close. Overnight session: 18:00:00 inclusive on the preceding calendar day to 09:30:00 exclusive on the trading day - overnight high and low. Opening range: 09:30:00 inclusive to 09:45:00 exclusive - opening-range high and low. The 09:25-09:30 bar is used only to initialize arming state for prior-day and overnight zones; it defines no additional measured price range.
+  early_close_handling: SKIP_TRADING_DATE - early-close days are NOT eligible trading days; no trading on early-close days.
 
 # --- Decision-clock timing ------------------------------------------------------------
 decision_clock:
-  decision_bar_interval: TBD
-  decision_point: TBD
-  signal_to_order_delay: TBD
+  decision_bar_interval: 5min, built from one-minute bars, aligned to standard five-minute America/New_York clock boundaries (e.g. 09:30-09:35), start inclusive, end exclusive.
+  decision_point: Only after the completed five-minute bar closes (e.g. the 09:40-09:45 bar becomes known and may support a decision at 09:45:00 America/New_York).
+  signal_to_order_delay: Exactly 1.000 second after the decision timestamp; the order is submitted only if all submission-time safety and eligibility checks still return CLEAR.
 
 # --- Eligible trading dates ---------------------------------------------------------------
 eligible_trading_dates:
-  allowed_weekdays: TBD
-  holiday_and_half_day_policy: TBD
-  roll_week_policy: TBD
-  calendar_source: TBD
+  # UNRESOLVED: no banked answer exists - no batch ever specified which weekdays are tradable. (CME MNQ trades Mon-Fri, but Sam never froze a weekday list; the session must not silently adopt the guide's illustrative [MON..FRI].)
+  allowed_weekdays: [MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY]  # Gap batch Q9 (Sam, Nov 3): CME TRADING-DATE labels, not civil dates — Sunday-evening trading belongs to Monday's trading date and may contribute to Monday's overnight levels; Saturday/Sunday trading-date labels are never eligible. Holiday, early-close, roll-transition, calendar-unknown and data-invalid exclusions apply afterward; weekday eligibility alone does not make a date tradable.
+  holiday_and_half_day_policy: >
+    Only eligible FULL trading days may trade: exchange holidays, early-close (half) days, excluded roll dates and calendar-unknown dates are all ineligible.
+  roll_week_policy: The contract-roll transition trading date is excluded - no trading on the date the contract switch takes effect.
+  # Gap batch Q10 (Sam, Nov 3): CME Group's own archived session calendar governs trading-date eligibility — the annual holiday/trading-hours calendar, Globex special-hours/holiday notices, market-regulation/operations/closure notices for exceptional halts, delayed opens or unscheduled closures, and the official CME session specifications assigning each Globex session to its trading date. Standard: preserve the original first-party file/page, source URL, retrieval timestamp and SHA-256; preserve the source's original time-zone notation, normalized to America/New_York and UTC; record parser version and the derived calendar's hash; represent regular dates, full closures, early closes, delayed opens and confirmed halts explicitly; never infer a holiday from a recurring rule or substitute a generic market calendar; an unestablishable weekday is CALENDAR_UNKNOWN and ineligible; verified closed/halted minutes are confirmed no-trade intervals, not data gaps; B0 skips full holidays, early-close dates and roll-transition dates; an intraday exceptional halt poisons the affected dependencies under the Batch 7 data policy.
+  calendar_source: CME_GROUP_OFFICIAL_ARCHIVED_SESSION_CALENDAR
 
 # --- News-event policy ----------------------------------------------------------------------
 news_events:
-  policy: TBD
-  event_types: TBD
-  blackout_minutes_before: TBD
-  blackout_minutes_after: TBD
-  open_position_during_event: TBD
-  calendar_source: TBD
+  policy: >
+    FAIL CLOSED during a scheduled-news blackout: no new entry may be created or submitted; any working entry order is cancelled at the protection cutoff; any open position is flattened with the MARKET news/safety exit process; any active approach, arm, attempt, acceptance, confirmation or selected-but-unsubmitted candidate is invalidated and becomes terminal. Bars and zone interactions during the blackout may be logged diagnostically but cannot build or preserve an executable setup. Structural levels remain available unless separately invalidated; only their live interaction state resets. At blackout end each zone resumes UNARMED; trading may resume only within the normal entry window, with every eligibility check CLEAR, after an entirely fresh arm - attempt - acceptance - pullback - hold - continuation - selection sequence. Nothing that began before or during the blackout survives across it. If an earlier trade received any fill, the daily allowance is consumed and post-blackout signals are diagnostic only. Scheduled events only; unscheduled news is not covered by this section.
+  # Closed canonical list of 16. Excluded: speeches by other Fed officials, private payroll estimates, petroleum reports, auctions, earnings, unscheduled headlines, generic 'high-impact' labels. The blackout engine acts only when an event's protected interval overlaps possible B0 exposure. Every raw calendar label maps into exactly one canonical label; unrecognized or ambiguous labels remain UNKNOWN and never silently enter the blackout set.
+  event_types:
+    - US_EMPLOYMENT_SITUATION
+    - US_CPI
+    - US_PPI
+    - US_INITIAL_JOBLESS_CLAIMS
+    - US_GDP
+    - US_PERSONAL_INCOME_AND_OUTLAYS_PCE
+    - US_RETAIL_SALES
+    - US_DURABLE_GOODS
+    - US_JOLTS
+    - US_ISM_MANUFACTURING
+    - US_ISM_SERVICES
+    - US_CONFERENCE_BOARD_CONSUMER_CONFIDENCE
+    - US_UNIVERSITY_OF_MICHIGAN_CONSUMER_SENTIMENT
+    - US_FOMC_RATE_DECISION
+    - US_FOMC_PRESS_CONFERENCE
+    - US_FED_CHAIR_TESTIMONY
+  blackout_minutes_before: 15
+  # For Fed Chair testimony the after-buffer anchors to the scheduled END (blackout = start - 15min through end + 30min).
+  blackout_minutes_after: 30
+  open_position_during_event: >
+    Flattened with the MARKET news/safety exit process at the PROTECTION CUTOFF - exactly 15 minutes before the scheduled release - not at the release itself; at that same moment working entries are cancelled and live setup sequences are invalidated. Testimony: blackout runs scheduled start - 15 minutes through scheduled end + 30 minutes; if no authoritative scheduled end exists, the blackout fails closed through the 12:00 flatten deadline (no post-testimony entry that date); an unexpectedly early ending does not shorten the archived scheduled blackout; an officially revised schedule may be used only if published before the affected decision time and preserved in the calendar audit trail.
+  calendar_source: >
+    OFFICIAL_FIRST_PARTY_ARCHIVED_SCHEDULES - a first-party multi-source calendar (no single source publishes every canonical event). Mapping: BLS - Employment Situation, CPI, PPI, JOLTS; Department of Labor - Initial Jobless Claims; BEA - GDP and Personal Income and Outlays/PCE; U.S. Census Bureau - Retail Sales and Durable Goods; ISM - Manufacturing and Services; The Conference Board - Consumer Confidence; University of Michigan Surveys of Consumers - Consumer Sentiment; Federal Reserve - FOMC decision and press conference; the relevant congressional committee's official hearing notice, cross-checked against the Federal Reserve testimony archive - Fed Chair testimony start and scheduled end. Rules: use the originally scheduled date/time available before the event, never the actual publication timestamp or a retrospectively corrected listing; preserve the raw schedule/notice, source URL, retrieval timestamp, SHA-256, parser version and parsed output; preserve revisions separately with publication time and apply one only to decisions after it became public; store the source's original timestamp text plus normalized America/New_York and UTC timestamps; Eastern times follow New York DST, explicit UTC/other-zone times are converted without reinterpretation; a recurring rule such as 'first Friday' cannot replace an archived date; third-party calendars and reconstructed dates are not primary sources; if a pre-event official schedule cannot be established, the event remains UNKNOWN and the period cannot be treated as news-clear.
 
 # --- Setup definition -----------------------------------------------------------------------------
 setup:
-  definition: TBD
-  preconditions: TBD
-  setup_expiry: TBD
+  definition: >
+    A trade becomes possible ONLY when price demonstrates confirmed structural continuation with sufficient room to the next opposing zone: an armed zone produces directional acceptance (two consecutive completed five-minute closes at least 0.50 points beyond it), followed within the confirmation window by a pullback that holds the zone and an immediate continuation bar in the same direction. The planned entry, structural stop and nearest opposing-zone target must provide at least 1.50R GROSS reward-to-risk. That creates an ELIGIBLE setup; it is not yet an order trigger until deterministic candidate selection and all submission-time checks are complete.
+  preconditions:
+    - The completed decision bar closes at or after 09:45 and early enough for submission and any fill to occur before 11:30 New York time
+    - It is an eligible full trading day - not an exchange holiday, early-close day, excluded roll date or calendar-unknown date
+    - All required structural levels and source data are valid; missing or uncertain data fail closed
+    - The relevant zone is active, correctly armed and has not produced a stale, consumed or invalidated confirmation
+    - The structural stop is valid and remains on the proper side of the planned entry
+    - The nearest target zone exists and provides at least 1.50R of gross room
+    - No position or entry order is already open or unresolved
+    - The day's one-filled-entry allowance has not been consumed (any fill, full or partial, consumes it)
+    - No opposite-direction conflict, execution uncertainty, data halt or safety halt has stopped the day
+    - News protection, session, data, position, zone and execution-safety checks all return typed CLEAR
+    - NO separate minimum-range filter, EMA/VWAP condition or extra 'minutes since open' rule beyond the 09:45 start; a zero or invalid prior-day range makes the required level calculations unavailable rather than creating a new range threshold
+  setup_expiry: >
+    After acceptance, confirmation must complete WITHIN SIX five-minute bars: the qualifying pullback/hold must occur BY BAR FIVE and the required continuation on the IMMEDIATELY FOLLOWING bar, NO LATER THAN BAR SIX. If the sequence fails or times out, the acceptance EXPIRES and cannot be reused. A complete setup's candidate is evaluated ONLY at its decision timestamp; if blocked, losing selection, or not producing an order, it CANNOT trigger later. Any later opportunity requires a fresh arm, attempt, acceptance and confirmation.
 
 # --- Direction rules ----------------------------------------------------------------------------------
 direction:
-  long_conditions: TBD
-  short_conditions: TBD
-  conflict_resolution: TBD
+  long_conditions:
+    - A valid structural zone with lower boundary L and upper boundary U is armed from below
+    - A later touch or qualifying upward gap starts an upward attempt
+    - Price becomes accepted above the zone: two consecutive completed five-minute closes at or above U + 0.50 points
+    - Within the confirmation clock, a pullback bar retests the accepted zone, trades no lower than L, and closes holding above it (trading one tick below L FAILS the long setup)
+    - The immediately following five-minute bar confirms continuation by closing at least one tick above the pullback/hold bar's high
+    - Planned entry (confirmation close plus one adverse tick), structural stop one tick below L, and target one tick before the nearest zone above provide at least 1.50R
+    - If multiple long candidates exist simultaneously, this candidate wins the ranking: highest R:R, then smallest risk; an exact tie means NO trade
+    - Every news, session, data, position, zone and execution-safety check is CLEAR, with no open position, prior fill or daily halt
+    - The selected candidate creates one market-order lifecycle at the confirmation-bar close, submitted exactly 1.000 second later
+  short_conditions:
+    - A valid structural zone with lower boundary L and upper boundary U is armed from above
+    - A later touch or qualifying downward gap starts a downward attempt
+    - Price becomes accepted below the zone: two consecutive completed five-minute closes at or below L - 0.50 points
+    - Within the confirmation clock, a pullback bar retests the accepted zone, trades no higher than U, and closes holding below it (trading one tick above U FAILS the short setup)
+    - The immediately following five-minute bar confirms continuation by closing at least one tick below the pullback/hold bar's low
+    - Planned entry (confirmation close minus one adverse tick), structural stop one tick above U, and target one tick before the nearest zone below provide at least 1.50R
+    - If multiple short candidates exist simultaneously, this candidate wins the ranking: highest R:R, then smallest risk; an exact tie means NO trade
+    - Every news, session, data, position, zone and execution-safety check is CLEAR, with no open position, prior fill or daily halt
+    - The selected candidate creates one market-order lifecycle at the confirmation-bar close, submitted exactly 1.000 second later
+  conflict_resolution: >
+    If valid long and short confirmations complete at the SAME decision timestamp: NO trade, and a DIRECTIONAL-CONFLICT SAFETY HALT applies for the rest of that trading date. Neither side wins by ranking, order of processing, reward-to-risk or proximity. Diagnostic signals may still be recorded, but no entry may be submitted later that day. This also applies if the conflict completes during the pre-09:45 replay.
 
 # --- Structural level definitions -------------------------------------------------------------------------
 structural_levels:
-  level_types: TBD
-  calculation_method: TBD
-  level_expiry: TBD
-  level_proximity_tolerance: TBD
+  # Closed list of exactly seven. Explicitly NOT used: swing highs/lows, EMA levels, VWAP, pivots, volume profile, Fibonacci levels, discretionary support/resistance.
+  level_types:
+    - Prior regular-session high
+    - Prior regular-session low
+    - Prior regular-session close
+    - Overnight-session high
+    - Overnight-session low
+    - Opening-range high
+    - Opening-range low
+  calculation_method: >
+    All levels are calculated from valid one-minute bars in America/New_York time; five-minute decision bars are not used to calculate level prices. Prior regular-session high: maximum one-minute high over the previous eligible regular session (09:30 inclusive to 16:00 exclusive). Prior regular-session low: minimum one-minute low over the same window. Prior regular-session close: close of the final valid one-minute bar in that window (normally the 15:59-16:00 bar); if the final bar is absent, the configured staleness and verified-no-trade requirements must be satisfied, otherwise the close is unavailable. Overnight high/low: maximum high / minimum low from 18:00 inclusive on the preceding calendar day to 09:30 exclusive on the trading day. Opening-range high/low: maximum high / minimum low from 09:30 inclusive to 09:45 exclusive. Missing bars are never synthesized or forward-filled; if unexplained missing data prevents validating a required window, the affected level is UNAVAILABLE. Nearby raw levels merge into one structural zone when their distance is within 2% of the prior regular-session range, clamped between 2 and 10 points (threshold = min(max(0.02 x prior range, 2), 10)).
+  level_expiry: A level remains valid for the entire trading date; it does not expire merely because it is touched, breached, accepted or tested multiple times. Its interaction state may reset and require a fresh arm/attempt, but the underlying level remains available. All levels expire at the end of that trading date and are recalculated for the next eligible date. The preliminary opening-range version used during the 09:30-09:45 replay is replaced by the final opening-range level at 09:45. A level can become unavailable earlier only if its source data, contract, calendar status or calculation is found invalid or uncertain. For actual entries, every otherwise-valid level becomes non-actionable once the 11:30 entry cutoff arrives.
+  level_proximity_tolerance: >
+    Approaching/testing: price's WICK comes within 6.00 MNQ points (24 ticks) of the nearest zone boundary. A touch requires the wick to reach that boundary or trade inside the zone; there is no additional touch tolerance beyond the boundary itself. Proximity/touch are judged on wicks, not closes. (Zone merging is a separate mechanism - see calculation_method.)
 
 # --- Acceptance, rejection and breakout definitions ---------------------------------------------------------
 acceptance_rejection_breakout:
-  measurement_basis: TBD
-  acceptance_definition: TBD
-  rejection_definition: TBD
-  breakout_definition: TBD
+  measurement_basis: >
+    Measured on completed five-minute decision bars: approach, touch and breach are judged using the bar's high and low (wicks) against zone boundaries; acceptance is judged using five-minute closes, requiring the configured consecutive closes beyond the far boundary; rejection is judged primarily using five-minute closes after a directional touch or qualifying gap attempt - wicks establish the interaction, closing location determines whether the attempt was rejected. Breakout is not a separate event in B0; it is identical to confirmed acceptance beyond the zone.
+  acceptance_definition: >
+    For a zone with lower boundary L and upper boundary U: acceptance ABOVE - after an armed upward attempt begins with a touch or qualifying gap - requires TWO consecutive completed five-minute closes at or above U + 0.50 points (two MNQ ticks beyond the zone). Acceptance BELOW - after an armed downward attempt - requires TWO consecutive completed five-minute closes at or below L - 0.50 points. A wick beyond the zone is only a breach; it is NOT acceptance. Breakout and acceptance are the same event in B0. The later pullback, hold and continuation bar are confirmation AFTER acceptance, not part of it.
+  rejection_definition: >
+    TWO separate rejection rules, deliberately kept apart. (A) Attempt-phase rejection, close-based, threshold 0.50 points: during the attempt's THREE-BAR rejection window, an upward attempt is rejected if price fails to establish acceptance above AND a completed five-minute bar closes back on the originating lower side of the zone at or below L - 0.50; a downward attempt is rejected if a completed five-minute bar closes at or above U + 0.50. Equality qualifies. An attempt must first be legitimately ARMED and begin with a touch or qualifying gap. If the three-bar window expires without a rejection, the attempt is NOT retroactively called rejected (acceptance may still occur later). (B) Post-acceptance pullback/confirmation failure, wick-based, threshold exactly one MNQ tick (0.25 point) through the zone's far boundary: a long pullback whose low is at or below L - 0.25 rejects and FAILS the setup; a short pullback whose high is at or above U + 0.25 rejects and fails the setup. Equality qualifies; merely touching L (long) or U (short) does not fail. The current attempt, acceptance and confirmation sequence become terminal and cannot be reused. The zone is NOT killed for the day: it returns to UNARMED status and requires a fresh clear-side close, new attempt, new acceptance and new confirmation. Any actual fill still consumes the daily entry allowance, so rearming matters only when the rejected setup never produced a fill. Rationale (Sam): the 0.25 wick threshold fails a vulnerable pending setup, while the 0.50 close threshold classifies the earlier attempt as rejected - a single noisy wick must not create a close-based rejection label.
+  breakout_definition: In B0, breakout is NOT a separate event from acceptance. A breakout ABOVE means an armed upward attempt produces two consecutive completed five-minute closes at or above U + 0.50 points (two ticks beyond the zone's upper boundary); a breakout BELOW requires the mirrored two closes at or below L - 0.50. A wick or single close beyond the zone is only a breach or partial acceptance sequence - NOT a breakout. The later pullback, hold and continuation bar are confirmation AFTER the breakout/acceptance, not part of it.
 
 # --- EMA (only if later approved) ----------------------------------------------------------------------------
 # If `included` is false, the other EMA fields are not required.
 ema:
-  included: TBD
+  # Dependent EMA fields intentionally left TBD: validation.py skips a disabled section entirely, so they are not required and must not be filled with invented values.
+  included: false
   period: TBD
   price_source: TBD
   bar_interval: TBD
@@ -142,7 +237,8 @@ ema:
 # --- VWAP (only if later approved) --------------------------------------------------------------------------
 # If `included` is false, the other VWAP fields are not required.
 vwap:
-  included: TBD
+  # Dependent VWAP fields intentionally left TBD: validation.py skips a disabled section entirely, so they are not required and must not be filled with invented values.
+  included: false
   anchor: TBD
   price_source: TBD
   volume_source: TBD
@@ -151,113 +247,173 @@ vwap:
 
 # --- Entry trigger ------------------------------------------------------------------------------------------------
 entry_trigger:
-  long_trigger: TBD
-  short_trigger: TBD
+  long_trigger: >
+    The trigger event is the completed decision-bar close at which all three conditions are established: (1) the continuation bar closes and completes confirmation; (2) the resulting candidate passes trade geometry and wins deterministic selection; (3) every required decision-time eligibility check is typed CLEAR. That selected, fully eligible candidate is the trigger - not the earlier touch, acceptance, pullback, hold, or an intrabar price movement. Exactly 1.000 second after that decision timestamp, the system reruns the required submission-time checks; the market order is submitted only if they still all return CLEAR, otherwise the candidate becomes NOT_SUBMITTED and is terminal.
+  short_trigger: The exact mirrored sequence of long_trigger (continuation close completing confirmation; candidate passes geometry and wins deterministic selection; all decision-time checks typed CLEAR; submission-time checks rerun at +1.000s; failure = NOT_SUBMITTED, candidate terminal).
 
 # --- Order type ----------------------------------------------------------------------------------------------------
 order_type:
-  entry_order_type: TBD
-  entry_price_rule: TBD
+  entry_order_type: MARKET - every entry is a market order, submitted exactly 1 second after the confirmation/decision-bar close, provided all safety checks are still CLEAR.
+  entry_price_rule: >
+    The confirmation close plus one adverse tick is the PLANNED/MODELLED entry price, not a price attached to the market order: long = confirmation close + 0.25 point; short = confirmation close - 0.25 point. The actual entry is whatever authoritative fill price the market produces, including modeled slippage. (This one adverse tick IS the section-16 entry slippage - see slippage.entry_ticks; it is never charged twice.)
 
 # --- Order validity and cancellation -------------------------------------------------------------------------------
 order_validity:
-  time_in_force: TBD
-  cancellation_conditions: TBD
+  time_in_force: 2.000 seconds measured from SUBMISSION. If no fill occurs within 2.000 seconds after submission, cancellation is requested and the unfilled quantity cannot be chased, replaced, or retried.
+  cancellation_conditions:
+    - 11:30:00 New York entry cutoff: cancel all remaining unfilled quantity immediately; an order scheduled for submission at or after 11:30 is never submitted
+    - Directional-conflict halt: cancel the working entry and halt new entries for the date
+    - Any eligibility or safety state becomes BLOCKED or UNKNOWN - including the news-entry-protection cutoff beginning, missing/stale data, lost order/position/account state, broker-platform disagreement, position mismatch, connection failure, emergency-flatten activation, or any other governing safety halt
+    - Structural invalidation while the entry remains unfilled (per structural_invalidation.definition)
+    - Expiry mechanics: at 2.000s after submission with no fill, cancellation is requested; unfilled quantity cannot be chased, replaced, or retried; a fill received while cancellation is pending remains a valid cancellation-race fill and creates real exposure; only an authoritative confirmed cancellation makes the order definitively dead
+    - Partial fills: no separate partial-fill cancellation rule - a partial fill is real exposure and consumes the daily entry allowance; the remaining quantity follows the same lifecycle unless one of the conditions above cancels it or its two-second deadline arrives; if the fill itself is at/beyond invalidation, emergency flatten activates and the BLOCKED/UNKNOWN category cancels the remainder
 
 # --- Structural invalidation ------------------------------------------------------------------------------------------
 structural_invalidation:
-  definition: TBD
-  action: TBD
+  definition: >
+    Judged on a completed five-minute decision-bar CLOSE, never a wick (a wick is handled by the protective stop; this identifies failure of the accepted market structure). Long: structurally invalidated when a completed five-minute bar closes at or below the zone's upper boundary U (price has closed back inside or through the zone after accepting above it). Short: structurally invalidated when a completed five-minute bar closes at or above the zone's lower boundary L. Equality qualifies as invalidation. Incomplete, missing, or untrusted bars cannot prove invalidation; they invoke the separate data-safety policy. Intrabar wicks into the zone do not trigger this by themselves.
+  action: >
+    If the entry order is still working: cancel its remaining quantity. If a position is open: submit the defined market structural-invalidation exit, cancel the protective target, reconcile the stop/OCO state, and halt further entries (any fill already consumed the daily allowance). Preserve the original structural stop; invalidation does not move or widen it. (Note: with a two-second entry lifetime, another five-minute bar normally cannot close while the entry is still working - the working-order branch is valid for completeness but effectively dormant under B0; the open-position branch is the operative one.)
 
 # --- Stop placement ----------------------------------------------------------------------------------------------------
 stop_placement:
-  method: TBD
-  buffer_ticks: TBD
-  minimum_stop_points: TBD
-  maximum_stop_points: TBD
-  trade_skipped_if_outside_limits: TBD
+  method: >
+    Structural stop from the zone's FAR boundary (opposite the acceptance side), displaced by buffer_ticks: long reference boundary = zone lower boundary L, stop = L - 0.25; short reference boundary = zone upper boundary U, stop = U + 0.25. The resulting stop must fall on the MNQ tick grid, remains fixed after entry, and is never compressed or widened to accommodate position size.
+  # The buffer is the complete one-tick displacement beyond the far boundary - nothing additional is added (no double-counting).
+  buffer_ticks: 1
+  minimum_stop_points: 4.00
+  # Both limits are INCLUSIVE (exactly 4.00 and exactly 15.00 qualify), measured as the absolute distance from the planned entry price to the frozen structural stop. At one MNQ contract the permitted price risk is $8-$30 before slippage and commissions. These are conservative candidate guardrails, not claimed optimal; diagnostics must report excluded setups and test neighboring ranges (minimums 3-5, maximums 12-18) on unseen data before any B0 change.
+  maximum_stop_points: 15.00
+  # Skip the trade as STRUCTURAL_STOP_DISTANCE_OUTSIDE_LIMITS. Never compress, widen, or otherwise move the structural stop to make it qualify; no clipping exists in B0.
+  trade_skipped_if_outside_limits: true
 
 # --- Target placement ---------------------------------------------------------------------------------------------------
 target_placement:
-  method: TBD
-  parameters: TBD
+  method: >
+    Zone-based, never a fixed R multiple. Long: the nearest eligible opposing zone above the planned entry. Short: the nearest eligible opposing zone below the planned entry. 1.50R is only the minimum planned reward-to-risk qualification gate: a candidate with less than 1.50R is skipped; the target is never moved to manufacture 1.50R. A farther zone is never substituted merely because it would produce a better R:R.
+  parameters: >
+    Long target = the nearest eligible opposing zone's lower boundary - 0.25 point (one tick before the zone). Short target = the nearest eligible opposing zone's upper boundary + 0.25 point. Merged zones are treated as one complete zone: use its outer near boundary and ignore individual component levels for target placement. No eligible zone ahead: no target substitution and no trade. Fill model (Batch 9): a target touch alone does NOT fill - price must trade one tick THROUGH the target (TRADE_ONE_TICK_THROUGH); once qualified, the exit is booked at the frozen target price with 0 ticks slippage and no price improvement.
 
 # --- Position management ---------------------------------------------------------------------------------------------------
 position_management:
-  contracts_per_trade: TBD
-  sizing_method: TBD
-  scaling_in_out: TBD
-  breakeven_rule: TBD
-  trailing_stop_rule: TBD
-  time_based_exit: TBD
+  # One MNQ contract per trade for the frozen baseline backtest - strictly the RESEARCH quantity, not final deployment sizing. Deployment quantity remains evidence-derived (contracts = floor(allowed account risk / modeled risk per MNQ contract); below 1 = skip; never round up, force one contract, or compress the structural stop) and is NOT part of frozen B0.
+  contracts_per_trade: 1
+  # Sam's exact token (he wrote it as position_sizing.sizing_method; the YAML section is position_management). Every executable B0 research trade uses exactly 1 MNQ contract; the evidence-derived deployment formula must not affect B0 signals, trade selection, or backtest results.
+  sizing_method: FIXED_ONE_CONTRACT_RESEARCH_ONLY
+  # B0 enters exactly one contract and exits the entire contract via one of four normal paths: protective stop; protective target; structural-invalidation market exit; scheduled 12:00 New York market flatten (plus the news/safety emergency flatten override). No scaling in, planned partial exits, pyramiding, averaging, or re-entry. Partial entry fills remain operationally possible in the general engine, but at one contract any positive fill IS the full position.
+  scaling_in_out: NONE
+  breakeven_rule: NONE
+  # Governing sentence for both breakeven_rule and trailing_stop_rule: the original structural stop remains fixed for the trade's entire life - never moved to breakeven, trailed, tightened, widened, or relocated to protect profit or restore a desired R:R.
+  trailing_stop_rule: NONE
+  # No duration-based holding limit: entries at 09:46 and 11:29 share the same 12:00 deadline. Normal exits: fixed stop, fixed target, structural-invalidation exit, scheduled 12:00 flatten; news/safety flatten is an emergency override. The Batch 4 wording '15:55 or earlier holiday-session flatten as backstop' is SUPERSEDED in part by Batch 5 Q2: the backstop is 15:55:00 (see session_flattening note) and early-close dates are ineligible, so no holiday-session backstop adjustment exists in B0.
+  time_based_exit: 12:00_NEW_YORK_SCHEDULED_FLATTEN_ONLY
 
 # --- Maximum trades per day -------------------------------------------------------------------------------------------------
 daily_limits:
-  max_trades_per_day: TBD
-  max_losing_trades_per_day: TBD
-  daily_loss_stop_usd: TBD
+  max_trades_per_day: 1
+  # Both limits derive from the one-filled-entry allowance (Batch 5 pack): any fill - full or partial, win or lose - ends entries for the date, so a second trade after a loss can never exist.
+  max_losing_trades_per_day: 1
+  # No dollar threshold can change B0 behavior because any positive fill already ends entry eligibility for the date; the backtest must still REPORT the complete realized daily loss including commissions and slippage. Deployment value remains UNRESOLVED_EVIDENCE_DERIVED_PENDING_PROP_RULE_MODEL - to be selected only after the tested loss distribution, stressed costs/slippage, Monte Carlo results and current Tradeify drawdown rules are incorporated; do not invent a dollar amount. Kept separate: allowed planned risk per trade (sizing input) vs realized daily loss stop (account-level circuit breaker) - related under a one-trade policy, not automatically the same number.
+  daily_loss_stop_usd: NOT_APPLICABLE_B0_ONE_FILLED_ENTRY_LIMIT
 
 # --- Re-entry policy ------------------------------------------------------------------------------------------------------------
 reentry:
-  allowed: TBD
-  conditions: TBD
-  cooldown_minutes: TBD
+  allowed: "no"
+  conditions: NOT_APPLICABLE
+  # Re-entry is not allowed in B0 (Batch 4 Q3: no re-entry; Batch 5 pack: allowed = no, conditions/cooldown NOT_APPLICABLE).
+  cooldown_minutes: NOT_APPLICABLE
 
 # --- Session flattening ---------------------------------------------------------------------------------------------------------
 session_flattening:
-  no_new_entries_after: TBD
-  flatten_all_by: TBD
-  flatten_order_type: TBD
+  no_new_entries_after: "11:30:00"
+  # America/New_York; the flatten process is initiated at 12:00. NO YAML HOME: Sam's separate field emergency_flatten_backstop = 15:55:00 America/New_York does not exist in this YAML (see yaml-field-map.md). Its substance: the backstop covers FAILURES only (12:00 exit rejected/lost/unacknowledged; unknown order/position state; cancellation-race or late fill recreating exposure; broker position differing from recorded fills; connection/platform failure; residual exposure found on reconciliation). Exposure discovered after 12:00 is flattened IMMEDIATELY - the system never intentionally waits until 15:55; at 15:55 an independent watchdog rechecks the authoritative broker position and invokes emergency flattening if any exposure remains or flatness cannot be confirmed.
+  flatten_all_by: "12:00:00"
+  # Market governs ALL flatten paths: scheduled 12:00, news/safety, and the 15:55 watchdog emergency flatten. No limit, stop-limit, passive or discretionary order type for forced flattening. Shared failure protocol: verify authoritative position - submit market close for confirmed open quantity - reconcile fills and remaining exposure - retry per the frozen emergency process if still open - alert - cancel incompatible remaining orders - halt new entries. Never submit another flatten blindly if authoritative state already confirms flat.
+  flatten_order_type: MARKET
 
 # --- Same-bar (intrabar) ambiguity ----------------------------------------------------------------------------------------------
 # A one-minute OHLC bar does not reveal whether its high or low came first.
 # See docs/DATA_CONTRACT.md section "Intrabar ambiguity".
 intrabar_ambiguity:
-  stop_and_target_same_bar: TBD
-  entry_and_exit_same_bar: TBD
-  resolution_with_finer_data: TBD
+  # Sam's token names the general policy (intrabar_ambiguity_resolution: STOP_FIRST); this field is its YAML home. With only one-minute data, a bar reaching both stop and target books the STOP exit with modeled adverse stop slippage and applicable costs; the target is never awarded from unresolved ordering. Finer data may override only when it proves the actual sequence (see resolution_with_finer_data).
+  stop_and_target_same_bar: STOP_FIRST
+  entry_and_exit_same_bar: >
+    The entry bar CAN produce an exit, asymmetrically conservative: if the entry minute reaches the stop, assume the stop was hit after entry and exit at the modeled stop fill; if it reaches ONLY the target, the target is NOT awarded (the target-reaching price may have occurred before entry) and the position remains open; if it reaches both, STOP_FIRST governs and the trade exits at the stop; if neither, the trade continues normally. Every entry-minute result stays flagged intrabar-ambiguous. Finer data may override only when it establishes the relevant price occurred after the authoritative/modelled entry fill.
+  resolution_with_finer_data: >
+    When finer data are complete, verified, correctly timestamped and cover the entire ambiguous interval, the finer-data sequence becomes the PRIMARY execution result for that trade (FINER_DATA_RESOLVED_PRIMARY) - for execution ordering, fills, MAE/MFE and post-entry exit occurrence ONLY; five-minute bars still produce all strategy decisions, and finer data must never retroactively alter signal, confirmation, direction or candidate selection. If finer data are missing, incomplete, unsynchronized or otherwise uncertain, the conservative one-minute result remains primary. Both versions are always preserved and reported (one-minute version = ONE_MINUTE_CONSERVATIVE_COUNTERFACTUAL), per affected trade: whether the exit outcome changed; stop/target/no-exit under each; fill time and price under each; gross and net P&L difference; net-R difference; MAE/MFE difference; which ambiguity caused the difference. Aggregate: number and percentage of trades changed, plus differences in win rate, expectancy, drawdown, losing streak and total net P&L. The conservative result is never deleted or silently overwritten; it remains the benchmark/stress case.
 
 # --- Missing-data behaviour ------------------------------------------------------------------------------------------------------
 missing_data:
-  policy: TBD
-  max_tolerated_gap_minutes: TBD
-  open_position_during_gap: TBD
+  policy: DEPENDENCY-LEVEL POISONING (not whole-date rejection, not mere proximity filtering). Never synthesize, forward-fill, interpolate, or repair a missing expected bar. A verified no-trade minute is NOT a gap; a known outage or unexplained missing minute is. Any five-minute decision bar containing one or more missing expected one-minute bars is INCOMPLETE and unusable. Any level whose reference window includes the gap becomes unavailable; levels built from unaffected windows remain usable. A gap during an active approach, attempt, acceptance or confirmation invalidates that live sequence and resets the zone's live state (history remains logged). No decision or entry may use the incomplete interval; resumption only from complete bars through a completely fresh arm - attempt - acceptance - confirmation sequence. If the missing dependency leaves insufficient valid levels to evaluate structure, room, stop or target, the date naturally becomes non-tradable, but it is not rejected merely because an unrelated minute was absent. A gap while a position is open makes the trade unscorable in primary statistics plus a separately reported full-loss stress result (see open_position_during_gap); in live operation it invokes the data-safety and reconciliation/flatten policy. Total missing minutes per date are still reported for data-quality diagnostics with extreme outliers flagged for review, but totals never change B0 eligibility when every required dependency remains complete.
+  # No separate whole-date numerical threshold exists in B0. Setting 0 would falsely imply one irrelevant missing minute rejects the whole date; that interpretation is explicitly removed.
+  max_tolerated_gap_minutes: NOT_APPLICABLE_DEPENDENCY_BASED_POLICY
+  open_position_during_gap: >
+    Primary run: the TRADE (not the date) is excluded from primary performance statistics as UNSCORABLE_OPEN_POSITION_DATA_GAP; the date, earlier signals, eligibility history and diagnostic records remain intact; no later B0 trade can arise that date (the fill consumed the allowance). Stress run: book a COMPLETE structural-stop loss, not the worst surviving observed price - from the actual/modelled entry fill, exit at the frozen structural stop with applicable adverse stop-market slippage, charge the full round-trip commission, and produce the Batch 9 scenario set (base, 2x-slippage, 3x-slippage, 1.25x-commission, 1.50x-commission, combined worst case). The worst surviving observed price remains a diagnostic only - it cannot substitute for an exit because the missing interval may contain worse prices. Live handling: block new action, preserve confirmed protection, reconcile authoritative order/position/account state, flatten confirmed exposure through the market safety process, halt new entries for the date.
 
 # --- Bad-data behaviour ------------------------------------------------------------------------------------------------------------
 bad_data:
-  policy: TBD
-  handling_of_rejected_bars: TBD
+  policy: >
+    The SAME dependency-based poisoning policy as missing_data: only corrupted dependencies are poisoned unless the corruption destroys confidence in the date as a whole. A corrupt one-minute bar is never repaired, rounded, substituted, or silently removed; the affected minute is marked unusable; any five-minute decision bar containing it becomes INVALID (distinct from missing-data INCOMPLETE); any reference-window level depending on it becomes unavailable; any active approach/attempt/acceptance/confirmation sequence touching it is invalidated and reset; an open trade touching it becomes unscorable plus the separate structural-stop full-loss stress treatment; unaffected portions of the date remain valid. The entire date is excluded ONLY when corruption prevents trustworthy date-wide interpretation (e.g. trading date, contract mapping, timestamp ordering/time zone, session assignment, or enough required dependencies cannot be established). Logging for every failure: trading date, contract, timestamp; raw record identifier/hash; failed contract rule and machine-readable reason code; original values, never rewritten; affected decision bar, reference window, levels, sequences, trades; final disposition token BAR_INVALID, DEPENDENCY_UNAVAILABLE, TRADE_UNSCORABLE, or DATE_EXCLUDED; plus data, code, calendar and specification hashes.
+  handling_of_rejected_bars: >
+    A rejected bar is never locally corrected, but an official vendor republication may be accepted as a NEW DATASET VERSION. Requirements: preserve the original raw file, rejected record, dataset hash, validation report and results permanently; obtain the replacement from the same authoritative vendor or another separately approved source; record retrieval time, source, request parameters, vendor file metadata and hashes; produce an exact diff identifying every added/removed/changed record; link the new dataset to the superseded dataset hash and state why replacement was accepted; validate the entire replacement independently - never patch the canonical file by hand; re-run every affected decision bar, level, sequence, trade and aggregate result; preserve earlier results as SUPERSEDED, never overwrite or delete; require a NEW STAGE APPROVAL because the data hash changed. If no authoritative corrected publication exists, the rejected bar remains rejected; internal interpolation, manual edits, rounding, or reconstruction from neighboring bars are never acceptable corrections.
 
 # --- Commission assumptions ----------------------------------------------------------------------------------------------------------
 commissions:
-  round_turn_per_contract_usd: TBD
-  includes_exchange_clearing_nfa_fees: TBD
-  source_and_date: TBD
+  # Per MNQ contract, entry $0.91 + exit $0.91 (the per-side figure is the arithmetic half of Tradeify's published $1.82 round-trip total). Base commission-and-fee assumption; modeled slippage is calculated separately and is NOT included in the $1.82.
+  round_turn_per_contract_usd: 1.82
+  # Yes - Tradeify states the $1.82 MNQ round-trip total includes exchange fees, NFA fees, clearing fees, and commissions; the $0.91 per side is all-in for those components and no trading-fee component is added elsewhere. Platform subscriptions, market-data charges, evaluation fees and account activation fees are outside per-trade P&L costs.
+  includes_exchange_clearing_nfa_fees: true
+  source_and_date: >
+    Tradeify Help Center - 'Trading Commission Fees' (help.tradeify.co/en/articles/10468315-trading-commission-fees); source published/updated 2026-04-28; retrieved and verified 2026-11-03. Dated raw archive captured 2026-11-03 (raw page + retrieval metadata + extract + SHA-256 preserved in the cost-source archive; SHA-256 2f094d76d9f58489...): the archived wording matches the cited amount and inclusion, so the $1.82 stands as an ARCHIVED base assumption. If a future archived page differs from this wording or amount, that creates a new decision rather than silently changing the cost model.
 
 # --- Slippage assumptions -------------------------------------------------------------------------------------------------------------
 slippage:
-  entry_ticks: TBD
-  stop_exit_ticks: TBD
-  target_exit_ticks: TBD
-  market_exit_ticks: TBD
-  stress_test_multipliers: TBD
+  # This IS the Batch 3 one-adverse-tick modelled entry (long fill = confirmation close + 1 tick; short = confirmation close - 1 tick); additional base entry slippage = 0 ticks. Never charged twice. Stress scenarios measure TOTAL displacement from the confirmation close (base 1, 2x = 2, 3x = 3 - never stacked). If authoritative finer data provide an actual fill, use that fill and apply no modeled entry slippage.
+  entry_ticks: 1
+  # Base stop-market execution books one adverse tick beyond the frozen stop (long fill = stop - 0.25; short fill = stop + 0.25). Governs ordinary stop exits, STOP_FIRST ambiguous bars, entry-bar stop exits, and unscorable-trade full-loss stress booking. Stress uses 2 and 3 adverse ticks TOTAL. Commissions remain separate.
+  stop_exit_ticks: 1
+  # Target-limit slippage is 0 in every scenario. Fill test (no separate YAML field - see target_placement.parameters): TRADE_ONE_TICK_THROUGH - a touch alone never fills; once qualified, booked at the frozen target price, no price improvement, no adverse slippage.
+  target_exit_ticks: 0
+  # One base figure for EVERY market exit: 12:00 scheduled flatten, news flatten, safety flatten, structural-invalidation exit, protection-failure/emergency flatten, 15:55 watchdog flatten (long books one tick below the market reference price; short one tick above). Stress uses 2 and 3 adverse ticks total. No path-specific slippage in B0; the exit reason is preserved so diagnostics can later test whether emergency paths need a different model. Finer-data or live fills replace modeled slippage and are never adjusted twice.
+  market_exit_ticks: 1
+  # The formal six-scenario B0 set (Batch 9 Q8), defined HERE - it supersedes Batch 7 Q3's reference to the set as 'already defined' (it was not defined in the repo). No other cross-product combinations are required for B0. Multipliers scale TOTAL displacement, never stack on the base tick.
+  stress_test_multipliers:
+    - BASE: 1 adverse tick total on modeled entry, stop and market-exit fills; target-limit slippage 0; round-trip commission $1.82
+    - SLIPPAGE_2X: 2 adverse ticks total on those modeled fills; target 0; commission $1.82
+    - SLIPPAGE_3X: 3 adverse ticks total; target 0; commission $1.82
+    - COMMISSION_1_25X: base slippage; round-trip commission $2.275
+    - COMMISSION_1_50X: base slippage; round-trip commission $2.73
+    - COMBINED_WORST_CASE: 3 adverse ticks total plus $2.73 round-trip commission - explicitly hypothetical, cannot overwrite the BASE result
 
 # --- Prop-account rule version ----------------------------------------------------------------------------------------------------------
 prop_account_rules:
-  firm: TBD
-  program_name: TBD
-  rules_document_version: TBD
-  rules_retrieved_date: TBD
-  account_size_usd: TBD
-  profit_target_usd: TBD
-  max_loss_limit_usd: TBD
-  drawdown_type: TBD
-  daily_loss_limit_usd: TBD
-  max_contracts: TBD
-  consistency_rule: TBD
-  minimum_trading_days: TBD
-  payout_rules: TBD
-  trading_restrictions: TBD
+  firm: Tradeify
+  # Lifecycle (one label would be wrong - Select Daily is elected only AFTER passing the shared Select evaluation): evaluation_program = Tradeify Select 50K Evaluation; funded_program_election = Tradeify Select Daily Payout Policy - 50K Account; broker_connection = Rithmic (no separate YAML field exists for the broker). Do NOT call it a 'Select Daily 50K Evaluation' - that would wrongly apply funded rules (e.g. the $1,000 daily loss limit) to the evaluation. Source: dated capture of Tradeify's published rules, 2026-11-03, Sam-reviewed and approved for banking.
+  program_name: Tradeify Select 50K Evaluation, electing the Select Daily Payout Policy for the funded 50K account after passing
+  rules_document_version: NO_SINGLE_VERSIONED_DOCUMENT_PUBLISHED - Tradeify publishes no single versioned rules document; each Help Center article carries its own dateModified, preserved per page in the rules archive metadata (newest core pages, payout policies and pricing, modified 2026-11-02; Select Evaluation 2026-10-19; Daily Loss Limit 2026-10-17; drawdown 2026-10-15).
+  # Dated capture: 18 official Tradeify pages, raw + metadata + SHA-256 + per-phase extracts, preserved in the Tradeify rules archive; reviewed and approved by Sam before banking.
+  rules_retrieved_date: "2026-11-03"
+  # $50,000 in both phases (Select 50K Evaluation; funded Select Daily 50K). No mismatch with the project brief's $50K.
+  account_size_usd: 50000
+  # EVALUATION-phase value. Published caveat: accounts purchased before the new dashboard launch retain their original $2,500 target, including on reset. FUNDED: no profit target; the funded account starts at the base $50,000 regardless of evaluation ending balance, and evaluation profits do not carry over. This is the firm's evaluation target - NOT the mandate's ~$17K payout objective, which is an evaluation scenario, not a target.
+  profit_target_usd: 3000
+  # SAME in both phases: a $2,000 trailing floor measured down from the highest end-of-day balance; a fresh 50K account's floor starts at $48,000.
+  max_loss_limit_usd: 2000
+  drawdown_type: >
+    EOD TRAILING in both phases: the floor updates only at end of day off the highest end-of-day balance (high-water mark; moves up, never down) but is ENFORCED IN REAL TIME against net liquidation value including unrealised P&L; hard breach (account fails permanently). FUNDED-ONLY LOCK: at EOD balance $52,100 the floor fixes at $50,100, or immediately upon a payout request, whichever comes first; evaluations never lock.
+  # EVALUATION-phase value: NONE (confirmed verbatim in the captured source). FUNDED (Select Daily, 50K): $1,000 initial - a SOFT breach (trading pauses until the next 6:00 PM ET session; the account does not fail; resets each session); at a $53,000 balance (6% profit) it increases to $2,000 (matching the drawdown) from the next session, for accounts purchased after Sep 12, 2025; legacy accounts purchased before that date have the DLL removed entirely at 6%.
+  daily_loss_limit_usd: NONE
+  # EVALUATION-phase value. FUNDED: starts at 2 mini / 20 micro, scaling with EOD equity - $51,500 -> 3 mini / 30 micro; $52,000 -> 4 mini / 40 micro maximum; tiers once reached are retained. Minis and micros combine at 10 micros = 1 mini, so the MNQ ceiling is 40 contracts in both phases at full scale. This caps DEPLOYMENT sizing; B0 research remains frozen at 1 contract.
+  max_contracts: 40 micro / 4 mini (evaluation, full limit)
+  # Caution preserved: the select-plan marketing page's gloss ('profitable on at least 40% of your trading days') does NOT match the Help Center rule; the Help Center wording governs.
+  consistency_rule: >
+    Evaluation only: 40% - no single day's profit (commissions excluded) may exceed 40% of total profits; exactly 40% passes; exceeding delays passing, it does not fail the account. An optional purchased add-on raises the limit to 50%. Funded: NONE.
+  # EVALUATION-phase value: 3 trading days (a consequence of the 40% consistency rule; 2 days possible only with the 50% add-on). FUNDED Daily payouts: no minimum trading days between requests. Universal activity rule: at least 1 trade per week per account. A trading day = at least one trade placed in the 6:00 PM-5:00 PM ET session; on Rithmic, holiday half-days count but are recorded at the next full market close.
+  minimum_trading_days: 3
+  payout_rules: >
+    FUNDED, Select Daily election (made after passing; permanent for that account): profit split 90% trader / 10% Tradeify. Buffer: $2,100 of profit must remain in the account. Amount: up to 2x the profit earned since the last payout, capped at $1,250 per payout for accounts purchased on/after Sep 1, 2026 ($1,000 before); minimum payout $250; only one open payout request at a time; each later cycle requires positive net cycle profit. Payout gate: over 50% of trades AND over 50% of profit must come from holds longer than 10 seconds (funded only). A payout request itself can trigger the drawdown lock (floor $50,100, never moves down). Payouts usually land within 24 hours once Rise onboarding is complete.
+  trading_restrictions: >
+    News trading unrestricted. All positions flat by 4:45 PM ET each trading day (12:59 PM on holiday shortened days); no overnight or weekend holding. HEDGING PROHIBITED: opposing positions on the same instrument or same Product Group (MNQ sits in the Equity Index group), in one account or across accounts - consequences include violation status, profit forfeiture, and possible permanent ban. COPY TRADING IS EXPRESSLY PERMITTED (captured verbatim): 'Can I trade the same instrument on more than one account? A: Yes, as long as the positions are in the same direction. Copy trading is permitted.' - so the mandate's three-identical-accounts structure does not collide with Tradeify's published terms on this point. Counterpoints: coordinating with OTHER traders (team trading, third-party management, prohibited trade-copying) is banned; bots must be solely owned and provable (the firm scans for similar orders on other accounts and may require a live video of the owner enabling the code), may not be used across multiple firms, and HFT is prohibited. Maximum 5 simulated funded accounts per user and per household. DCA, flipping and scaling are unrestricted; exploiting platform errors is prohibited.
 
 # --- Approval record --------------------------------------------------------------------------------------------------------------------
 # Filled in ONLY when every question above is answered and you approve the
@@ -265,8 +421,8 @@ prop_account_rules:
 # `uv run mnq rules check` and ties the approval to this exact content:
 # any later edit breaks the match and blocks execution again.
 approval_record:
-  approved: false
-  approved_by: null
-  approved_at_utc: null
-  approved_spec_hash: null
+  approved: true
+  approved_by: Sam Barr
+  approved_at_utc: 2026-11-04T01:34:40Z
+  approved_spec_hash: da7fa6cdef2df19a86c4f693267c36d64461020fd8fad0bbeb55b563d407dc00
   approval_notes: null
